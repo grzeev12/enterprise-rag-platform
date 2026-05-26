@@ -339,3 +339,32 @@ ORDER BY "vector" <=> $queryVector
 ```
 
 The application filters every retrieval query by both `organizationId` and `workspaceId`.
+
+## Failed Neon Migration Recovery
+
+If Neon recorded `20260526000000_phase3_embeddings_rag` as failed with `ERROR: type "AuditAction" does not exist`, the database started from a migration history that was missing the Phase 1/2 baseline. Do not reset or drop the production database.
+
+Use the dedicated recovery workflow only when all of these are true:
+
+- Neon reports Prisma error `P3009`.
+- The failed migration is `20260526000000_phase3_embeddings_rag`.
+- The failure happened before the migration completed successfully.
+- You have reviewed the migration logs and confirmed that no production reset or destructive action is needed.
+
+Recovery flow after deploying the migration fix:
+
+1. Open GitHub Actions.
+2. Confirm the `DATABASE_URL` GitHub Secret points at the intended Neon production database. Prefer the direct Neon URL for migrations when available.
+3. Run the manual `Production Migration Resolve` workflow.
+4. Enter `ROLLBACK_FAILED_PHASE3` when prompted for confirmation.
+5. The workflow runs `prisma migrate resolve --rolled-back 20260526000000_phase3_embeddings_rag`, then `prisma migrate deploy`.
+6. Run the manual `Production Verification` workflow.
+
+Equivalent operator command, if a break-glass environment already has `DATABASE_URL` injected without printing it:
+
+```bash
+npx prisma migrate resolve --rolled-back 20260526000000_phase3_embeddings_rag
+npx prisma migrate deploy
+```
+
+If `migrate deploy` then reports that early Phase 3 objects already exist, the failed attempt left partial DDL behind. The Phase 3 migration now safely tolerates pre-created Phase 3 enum types and `DocumentChunk` embedding columns. Do not drop tables or data. Escalate before manually removing any database object.

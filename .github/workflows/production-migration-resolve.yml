@@ -1,0 +1,59 @@
+name: Production Migration Resolve
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_failed_phase3:
+        description: Type ROLLBACK_FAILED_PHASE3 to confirm the failed Phase 3 migration should be marked rolled back
+        required: true
+        type: string
+
+concurrency:
+  group: production-migration-resolve
+  cancel-in-progress: false
+
+jobs:
+  resolve-and-migrate:
+    name: Resolve failed Phase 3 migration and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Confirm recovery intent
+        run: |
+          if [ "${{ inputs.confirm_failed_phase3 }}" != "ROLLBACK_FAILED_PHASE3" ]; then
+            echo "::error::Confirmation text must be ROLLBACK_FAILED_PHASE3"
+            exit 1
+          fi
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL GitHub Secret is required"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "Confirmed recovery for failed migration 20260526000000_phase3_embeddings_rag."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Mark failed Phase 3 migration as rolled back
+        run: npx prisma migrate resolve --rolled-back 20260526000000_phase3_embeddings_rag
+
+      - name: Deploy pending migrations
+        run: npx prisma migrate deploy
+
+      - name: Verify pgvector, connectivity, and tenant integrity
+        run: npm run production:smoke
