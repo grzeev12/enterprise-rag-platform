@@ -28,6 +28,7 @@ export function LoginForm({ debugEnabled = false }: { debugEnabled?: boolean }) 
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
     const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
+    const dashboardPath = "/dashboard";
 
     setError(null);
     addDebugEvent("submit started");
@@ -50,9 +51,8 @@ export function LoginForm({ debugEnabled = false }: { debugEnabled?: boolean }) 
           return;
         }
 
-        const redirectTarget = result?.url ? safeCallbackUrl(result.url, callbackUrl) : callbackUrl;
-        addDebugEvent(`redirect target: ${redirectTarget}`);
-        router.push(redirectTarget);
+        addDebugEvent(`redirect target: ${dashboardPath}`);
+        router.replace(dashboardPath);
         router.refresh();
       } catch {
         addDebugEvent("signIn threw");
