@@ -1,0 +1,53 @@
+name: Frontend CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  nextjs:
+    name: Next.js app for Vercel
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/enterprise_ai_saas?schema=public
+      AUTH_SECRET: ci-auth-secret-ci-auth-secret-ci-auth-secret
+      AUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      REDIS_URL: redis://localhost:6379
+      AZURE_STORAGE_CONNECTION_STRING: UseDevelopmentStorage=true
+      AZURE_STORAGE_CONTAINER_NAME: enterprise-ai-saas
+      OPENAI_API_KEY: ci-placeholder
+      OPENAI_CHAT_MODEL: gpt-4o-mini
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Build Next.js app
+        run: npm run build

@@ -1,0 +1,725 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuditAction {
+  USER_SIGNED_UP
+  ORGANIZATION_CREATED
+  WORKSPACE_CREATED
+  USER_INVITED
+  USER_PROFILE_UPDATED
+  KNOWLEDGE_SOURCE_CREATED
+  KNOWLEDGE_SOURCE_DELETED
+  CRAWL_STARTED
+  CRAWL_COMPLETED
+  CRAWL_FAILED
+  EMBEDDING_JOB_STARTED
+  EMBEDDING_JOB_COMPLETED
+  EMBEDDING_JOB_FAILED
+  CHAT_CREATED
+  CHAT_ARCHIVED
+}
+
+enum AuditTargetType {
+  USER
+  ORGANIZATION
+  WORKSPACE
+  MEMBERSHIP
+  KNOWLEDGE_SOURCE
+  CRAWL
+  EMBEDDING_JOB
+  CHAT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum RoleScope {
+  ORGANIZATION
+  WORKSPACE
+}
+
+enum KnowledgeSourceType {
+  WEBSITE
+  DOCUMENT_UPLOAD
+}
+
+enum KnowledgeSourceStatus {
+  PENDING
+  READY
+  CRAWLING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+  ARCHIVED
+}
+
+enum CrawlStatus {
+  PENDING
+  CRAWLING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+  CANCELLED
+}
+
+enum CrawlPageStatus {
+  PENDING
+  FETCHING
+  FETCHED
+  PROCESSING
+  PROCESSED
+  FAILED
+  SKIPPED
+  BLOCKED
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  CHUNKED
+  FAILED
+}
+
+enum EmbeddingJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+}
+
+enum AiRequestStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  FAILED
+}
+
+enum AiRequestType {
+  CHAT_COMPLETION
+  STREAMING_CHAT_COMPLETION
+  EMBEDDING
+}
+
+enum ChatStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+  TOOL
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  auditLogs      AuditLog[]    @relation("AuditActor")
+  createdOrgs    Organization[] @relation("OrganizationCreator")
+  createdSpaces  Workspace[]   @relation("WorkspaceCreator")
+  knowledgeSources KnowledgeSource[] @relation("KnowledgeSourceCreator")
+  crawls           Crawl[]           @relation("CrawlCreator")
+  documents        Document[]        @relation("DocumentCreator")
+  embeddingJobs    EmbeddingJob[]    @relation("EmbeddingJobCreator")
+  chats            Chat[]
+  messages         Message[]
+  aiRequests       AiRequest[]
+
+  @@index([deletedAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Organization {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  createdBy   User         @relation("OrganizationCreator", fields: [createdById], references: [id])
+  memberships Membership[]
+  workspaces  Workspace[]
+  roles       Role[]
+  auditLogs   AuditLog[]
+  knowledgeSources KnowledgeSource[]
+  crawls           Crawl[]
+  crawlPages       CrawlPage[]
+  documents        Document[]
+  documentChunks   DocumentChunk[]
+  embeddingJobs    EmbeddingJob[]
+  aiRequests       AiRequest[]
+  tokenUsages      TokenUsage[]
+  chats            Chat[]
+  messages         Message[]
+  messageCitations MessageCitation[]
+  llmProviders     LlmProvider[]
+  modelConfigs     ModelConfig[]
+
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+model Workspace {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  memberships  Membership[]
+  roles        Role[]
+  auditLogs    AuditLog[]
+  knowledgeSources KnowledgeSource[]
+  crawls           Crawl[]
+  crawlPages       CrawlPage[]
+  documents        Document[]
+  documentChunks   DocumentChunk[]
+  embeddingJobs    EmbeddingJob[]
+  aiRequests       AiRequest[]
+  tokenUsages      TokenUsage[]
+  chats            Chat[]
+  messages         Message[]
+  messageCitations MessageCitation[]
+  modelConfigs     ModelConfig[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  workspaceId    String?
+  roleId         String
+  status         MembershipStatus @default(ACTIVE)
+  invitedEmail   String?
+  invitedById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, organizationId, workspaceId])
+  @@index([organizationId, workspaceId])
+  @@index([roleId])
+  @@index([deletedAt])
+}
+
+model Role {
+  id             String    @id @default(cuid())
+  organizationId String?
+  workspaceId    String?
+  key            String
+  name           String
+  scope          RoleScope
+  isSystem       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships     Membership[]
+  rolePermissions RolePermission[]
+
+  @@unique([organizationId, workspaceId, key])
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([deletedAt])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model AuditLog {
+  id             String          @id @default(cuid())
+  organizationId String?
+  workspaceId    String?
+  actorUserId    String?
+  action         AuditAction
+  targetType     AuditTargetType
+  targetId       String
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime        @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor        User?         @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model KnowledgeSource {
+  id             String                @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  createdById    String
+  type           KnowledgeSourceType
+  status         KnowledgeSourceStatus @default(PENDING)
+  name           String
+  baseUrl        String
+  allowedDomains String[]
+  excludedPaths  String[]              @default([])
+  maxPages       Int                   @default(50)
+  maxDepth       Int                   @default(2)
+  crawlDelayMs   Int                   @default(1000)
+  lastCrawledAt  DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("KnowledgeSourceCreator", fields: [createdById], references: [id])
+  crawls       Crawl[]
+  pages        CrawlPage[]
+  documents    Document[]
+  embeddingJobs EmbeddingJob[]
+
+  @@index([organizationId, workspaceId, status])
+  @@index([workspaceId, deletedAt])
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+model Crawl {
+  id                String      @id @default(cuid())
+  organizationId    String
+  workspaceId       String
+  knowledgeSourceId String
+  createdById       String
+  status            CrawlStatus @default(PENDING)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  pagesDiscovered   Int         @default(0)
+  pagesFetched      Int         @default(0)
+  pagesProcessed    Int         @default(0)
+  pagesFailed       Int         @default(0)
+  errorMessage      String?     @db.Text
+  settings          Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeSource KnowledgeSource @relation(fields: [knowledgeSourceId], references: [id], onDelete: Cascade)
+  createdBy       User            @relation("CrawlCreator", fields: [createdById], references: [id])
+  pages           CrawlPage[]
+  documents       Document[]
+
+  @@index([organizationId, workspaceId, status])
+  @@index([knowledgeSourceId, createdAt])
+  @@index([createdById])
+}
+
+model CrawlPage {
+  id                String          @id @default(cuid())
+  organizationId    String
+  workspaceId       String
+  knowledgeSourceId String
+  crawlId           String
+  url               String
+  normalizedUrl     String
+  depth             Int
+  status            CrawlPageStatus @default(PENDING)
+  httpStatus        Int?
+  contentType       String?
+  title             String?
+  metaDescription   String?         @db.Text
+  canonicalUrl      String?
+  errorMessage      String?         @db.Text
+  fetchedAt         DateTime?
+  processedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeSource KnowledgeSource @relation(fields: [knowledgeSourceId], references: [id], onDelete: Cascade)
+  crawl           Crawl           @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  document        Document?
+
+  @@unique([crawlId, normalizedUrl])
+  @@index([organizationId, workspaceId, status])
+  @@index([knowledgeSourceId, status])
+  @@index([crawlId, status])
+}
+
+model Document {
+  id                String         @id @default(cuid())
+  organizationId    String
+  workspaceId       String
+  knowledgeSourceId String
+  crawlId           String?
+  crawlPageId       String?        @unique
+  createdById       String
+  status            DocumentStatus @default(PENDING)
+  sourceUrl         String?
+  title             String?
+  metaDescription   String?        @db.Text
+  canonicalUrl      String?
+  language          String?
+  rawStorageKey     String?
+  textStorageKey    String?
+  textContent       String         @db.Text
+  contentHash       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeSource KnowledgeSource @relation(fields: [knowledgeSourceId], references: [id], onDelete: Cascade)
+  crawl           Crawl?          @relation(fields: [crawlId], references: [id], onDelete: SetNull)
+  crawlPage       CrawlPage?      @relation(fields: [crawlPageId], references: [id], onDelete: SetNull)
+  createdBy       User            @relation("DocumentCreator", fields: [createdById], references: [id])
+  chunks          DocumentChunk[]
+  embeddingJobs   EmbeddingJob[]
+
+  @@index([organizationId, workspaceId, status])
+  @@index([knowledgeSourceId, status])
+  @@index([crawlId])
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+model DocumentChunk {
+  id             String   @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  documentId     String
+  chunkIndex     Int
+  content        String   @db.Text
+  tokenEstimate  Int
+  metadata       Json
+  embeddingModel String?
+  embeddedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  embedding    ChunkEmbedding?
+  citations    MessageCitation[]
+
+  @@unique([documentId, chunkIndex])
+  @@index([organizationId, workspaceId])
+  @@index([documentId])
+  @@index([organizationId, workspaceId, embeddedAt])
+}
+
+model ChunkEmbedding {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  workspaceId     String
+  documentChunkId String                  @unique
+  model           String
+  dimensions      Int
+  vector          Unsupported("vector")?
+  vectorJson      Json?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  chunk DocumentChunk @relation(fields: [documentChunkId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, workspaceId])
+  @@index([model])
+}
+
+model EmbeddingJob {
+  id                String             @id @default(cuid())
+  organizationId    String
+  workspaceId       String
+  knowledgeSourceId String?
+  documentId        String?
+  createdById       String?
+  status            EmbeddingJobStatus @default(PENDING)
+  model             String
+  totalChunks       Int                @default(0)
+  embeddedChunks    Int                @default(0)
+  failedChunks      Int                @default(0)
+  errorMessage      String?            @db.Text
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeSource KnowledgeSource? @relation(fields: [knowledgeSourceId], references: [id], onDelete: SetNull)
+  document        Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdBy       User?            @relation("EmbeddingJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, workspaceId, status])
+  @@index([knowledgeSourceId, createdAt])
+  @@index([documentId])
+}
+
+model LlmProvider {
+  id             String   @id @default(cuid())
+  organizationId String?
+  key            String
+  name           String
+  baseUrl        String?
+  isEnabled      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  modelConfigs ModelConfig[]
+  aiRequests   AiRequest[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, isEnabled])
+}
+
+model ModelConfig {
+  id                 String   @id @default(cuid())
+  organizationId     String?
+  workspaceId        String?
+  providerId         String
+  key                String
+  displayName        String
+  kind               String
+  modelName          String
+  dimensions         Int?
+  maxInputTokens     Int?
+  maxOutputTokens    Int?
+  promptTokenCostUsd Decimal? @db.Decimal(12, 8)
+  completionTokenCostUsd Decimal? @db.Decimal(12, 8)
+  isDefault          Boolean  @default(false)
+  isEnabled          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider     LlmProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, workspaceId, key])
+  @@index([providerId, kind, isEnabled])
+}
+
+model AiRequest {
+  id             String          @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  userId         String?
+  providerId     String?
+  model          String
+  type           AiRequestType
+  status         AiRequestStatus @default(PENDING)
+  chatId         String?
+  messageId      String?
+  promptTokens   Int?
+  completionTokens Int?
+  totalTokens    Int?
+  latencyMs      Int?
+  errorCode      String?
+  errorMessage   String?         @db.Text
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  provider     LlmProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  chat         Chat?        @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  tokenUsages  TokenUsage[]
+
+  @@index([organizationId, workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([type, status])
+  @@index([chatId])
+}
+
+model TokenUsage {
+  id               String        @id @default(cuid())
+  organizationId   String
+  workspaceId      String
+  userId           String?
+  aiRequestId      String?
+  model            String
+  type             AiRequestType
+  promptTokens     Int           @default(0)
+  completionTokens Int           @default(0)
+  totalTokens      Int           @default(0)
+  createdAt        DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  aiRequest    AiRequest?   @relation(fields: [aiRequestId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([model, createdAt])
+}
+
+model Chat {
+  id             String     @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  userId         String
+  title          String
+  status         ChatStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  aiRequests   AiRequest[]
+
+  @@index([organizationId, workspaceId, userId, status])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  chatId         String
+  userId         String?
+  role           MessageRole
+  content        String      @db.Text
+  status         String      @default("COMPLETED")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chat         Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  citations    MessageCitation[]
+  aiRequests   AiRequest[]
+
+  @@index([organizationId, workspaceId, chatId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model MessageCitation {
+  id              String   @id @default(cuid())
+  organizationId  String
+  workspaceId     String
+  messageId       String
+  documentChunkId String
+  sourceUrl       String?
+  title           String?
+  score           Float
+  quote           String   @db.Text
+  createdAt       DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message      Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chunk        DocumentChunk @relation(fields: [documentChunkId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, workspaceId, messageId])
+  @@index([documentChunkId])
+}
