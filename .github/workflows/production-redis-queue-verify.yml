@@ -1,0 +1,35 @@
+name: Production Redis Queue Verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify Redis and BullMQ
+    runs-on: ubuntu-latest
+    env:
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Mask Redis URL
+        run: |
+          if [ -z "$REDIS_URL" ]; then
+            echo "REDIS_URL GitHub Secret is required." >&2
+            exit 1
+          fi
+          echo "::add-mask::$REDIS_URL"
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify Redis queue
+        run: npx tsx scripts/verify-production-redis.ts
+
