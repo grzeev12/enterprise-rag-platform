@@ -18,7 +18,8 @@ export type PermissionKey =
   | "member:invite"
   | "member:manage"
   | "audit:read"
-  | "admin:read";
+  | "admin:read"
+  | "governance:manage";
 
 export async function getOrganizationMembership(userId: string, organizationId: string) {
   return prisma.membership.findFirst({
@@ -40,6 +41,18 @@ export async function getOrganizationMembership(userId: string, organizationId: 
       }
     }
   });
+}
+
+export function assertSameTenant(
+  resource: { organizationId: string; workspaceId?: string | null },
+  expected: { organizationId: string; workspaceId?: string | null }
+) {
+  if (resource.organizationId !== expected.organizationId) {
+    throw new ApiError(404, "Resource not found");
+  }
+  if (expected.workspaceId && resource.workspaceId !== expected.workspaceId) {
+    throw new ApiError(404, "Resource not found");
+  }
 }
 
 export async function getWorkspaceMembership(

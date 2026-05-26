@@ -1,6 +1,6 @@
 # Enterprise AI SaaS Foundation
 
-This project implements the multi-tenant SaaS foundation, safe website ingestion, embeddings, pgvector indexing, and a RAG chat MVP. FinOps, advanced multi-LLM routing, and enterprise governance are intentionally left as later phases.
+This project implements the multi-tenant SaaS foundation, safe website ingestion, embeddings, pgvector indexing, RAG chat, admin operations, FinOps, multi-LLM routing, and enterprise hardening scaffolds.
 
 ## Deployment Architecture
 
@@ -17,6 +17,7 @@ Production targets:
 Docker is used only for local development and Azure Container Apps worker deployment. The Next.js app enqueues ingestion and embedding jobs; workers do not run on Vercel. The worker service is packaged with [Dockerfile.worker](/Users/zeevgrinberg/Documents/Search/Dockerfile.worker) and deployed separately to Azure Container Apps.
 
 See [deployment docs](/Users/zeevgrinberg/Documents/Search/docs/deployment.md), [Azure Container Apps guide](/Users/zeevgrinberg/Documents/Search/docs/azure-container-apps.md), and [Azure environment checklist](/Users/zeevgrinberg/Documents/Search/docs/azure-env-checklist.md) for Vercel and Azure setup.
+See [production hardening](/Users/zeevgrinberg/Documents/Search/docs/production-hardening.md) and [incident recovery](/Users/zeevgrinberg/Documents/Search/docs/incident-recovery.md) for enterprise readiness notes.
 
 ## Stack
 
@@ -121,11 +122,14 @@ Implemented:
 - Embedding jobs and pgvector-backed chunk indexing
 - Workspace-scoped RAG chat with streaming responses and citations
 
-Deferred:
+Enterprise scaffolds:
 
-- FinOps
-- Advanced multi-LLM routing
-- SSO/SAML and SCIM
+- Feature flags and organization AI policy records
+- Data retention, export/delete request, and legal hold scaffolds
+- Health/readiness endpoints
+- CSP/security headers and secret-safe logging
+- Rate limiting, retry, timeout, upload validation, and dead-letter scaffolds
+- Azure Monitor/OpenTelemetry-ready structured logs
 
 ## Knowledge Ingestion Worker
 

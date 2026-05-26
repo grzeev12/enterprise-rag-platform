@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { logError } from "@/lib/observability/logger";
+import { redact } from "@/lib/security/redaction";
 
 export class ApiError extends Error {
   constructor(
@@ -11,7 +13,7 @@ export class ApiError extends Error {
 }
 
 export function ok<T>(data: T, status = 200) {
-  return NextResponse.json(data, { status });
+  return NextResponse.json(redact(data), { status });
 }
 
 export function created<T>(data: T) {
@@ -30,6 +32,6 @@ export function handleApiError(error: unknown) {
     );
   }
 
-  console.error(error);
+  logError("api.error", error);
   return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }

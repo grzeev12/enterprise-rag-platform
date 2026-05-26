@@ -19,7 +19,8 @@ export const basePermissions: { key: PermissionKey; description: string }[] = [
   { key: "member:invite", description: "Invite members" },
   { key: "member:manage", description: "Manage members and roles" },
   { key: "audit:read", description: "View audit logs" },
-  { key: "admin:read", description: "View admin dashboard" }
+  { key: "admin:read", description: "View admin dashboard" },
+  { key: "governance:manage", description: "Manage enterprise governance settings" }
 ];
 
 export async function ensureBasePermissions() {
@@ -92,7 +93,8 @@ export async function createDefaultOrganizationRoles(organizationId: string) {
       "member:invite",
       "member:manage",
       "audit:read",
-      "admin:read"
+      "admin:read",
+      "governance:manage"
     ],
     member: ["organization:read", "workspace:create", "workspace:read", "source:create", "source:read", "crawl:start", "embedding:create", "chat:create", "chat:read"],
     viewer: ["organization:read", "workspace:read", "source:read", "chat:read"]
@@ -163,7 +165,8 @@ export async function createDefaultWorkspaceRoles(organizationId: string, worksp
       "chat:read",
       "member:invite",
       "member:manage",
-      "admin:read"
+      "admin:read",
+      "governance:manage"
     ],
     "workspace-member": ["workspace:read", "source:create", "source:read", "crawl:start", "embedding:create", "chat:create", "chat:read"]
   };

@@ -21,7 +21,8 @@ const permissions = [
   ["member:invite", "Invite members"],
   ["member:manage", "Manage members and roles"],
   ["audit:read", "View audit logs"],
-  ["admin:read", "View admin dashboard"]
+  ["admin:read", "View admin dashboard"],
+  ["governance:manage", "Manage enterprise governance settings"]
 ] as const;
 
 async function main() {
@@ -192,7 +193,8 @@ async function main() {
           "chat:create",
           "chat:read",
           "member:invite",
-          "admin:read"
+          "admin:read",
+          "governance:manage"
         ].includes(permission.key)
       )
       .map((permission) => ({

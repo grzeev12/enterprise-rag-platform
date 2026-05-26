@@ -4,7 +4,13 @@ import { ApiError } from "@/lib/api";
 
 const blockedHostnames = new Set(["localhost", "localhost.localdomain"]);
 const blockedSuffixes = [".local", ".internal", ".localhost"];
-const metadataHosts = new Set(["169.254.169.254", "metadata.google.internal"]);
+const metadataHosts = new Set([
+  "169.254.169.254",
+  "metadata.google.internal",
+  "metadata.azure.internal",
+  "instance-data",
+  "metadata"
+]);
 
 export type SafeUrlResult = {
   url: URL;
@@ -97,7 +103,11 @@ export function isBlockedIp(address: string) {
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127)
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 192 && b === 0) ||
+      (a === 192 && b === 88 && parts[2] === 99) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224
     );
   }
 
@@ -107,6 +117,8 @@ export function isBlockedIp(address: string) {
       normalized.startsWith("fc") ||
       normalized.startsWith("fd") ||
       normalized.startsWith("fe80") ||
+      normalized.startsWith("2001:db8") ||
+      normalized.includes("::ffff:127.") ||
       normalized === "::ffff:127.0.0.1"
     );
   }

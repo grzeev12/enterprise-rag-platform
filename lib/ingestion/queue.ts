@@ -66,12 +66,25 @@ export function getIngestionQueue() {
           delay: 2000
         },
         removeOnComplete: 500,
-        removeOnFail: 1000
+        removeOnFail: false
       }
     });
   }
 
   return queue;
+}
+
+export async function getQueueHealth() {
+  const queue = getIngestionQueue();
+  const [waiting, active, completed, failed, delayed] = await Promise.all([
+    queue.getWaitingCount(),
+    queue.getActiveCount(),
+    queue.getCompletedCount(),
+    queue.getFailedCount(),
+    queue.getDelayedCount()
+  ]);
+
+  return { waiting, active, completed, failed, delayed };
 }
 
 export async function enqueueCrawlWebsite(crawlId: string, options: JobsOptions = {}) {

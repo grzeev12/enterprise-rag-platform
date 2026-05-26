@@ -1,4 +1,5 @@
 import type { RetrievedChunk } from "@/lib/rag/vector-store";
+import { wrapRetrievedContext } from "@/lib/security/prompt-injection";
 
 export const groundedSystemPrompt = `You are a helpful enterprise knowledge assistant.
 
@@ -13,7 +14,7 @@ export function buildContext(chunks: RetrievedChunk[]) {
   return chunks
     .map((chunk, index) => {
       const source = chunk.title || chunk.sourceUrl || "Untitled source";
-      return `[${index + 1}] ${source}\nURL: ${chunk.sourceUrl ?? "n/a"}\nChunk ID: ${chunk.chunkId}\n${chunk.content}`;
+      return `[${index + 1}] ${source}\nURL: ${chunk.sourceUrl ?? "n/a"}\nChunk ID: ${chunk.chunkId}\n${wrapRetrievedContext(chunk.content).text}`;
     })
     .join("\n\n---\n\n");
 }

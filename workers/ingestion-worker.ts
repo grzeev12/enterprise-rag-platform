@@ -60,9 +60,9 @@ export function createIngestionWorker() {
         return;
       }
 
-      if (job.data.type === "generateEmbeddingForChunk") {
-        await generateEmbeddingForChunk(job.data.embeddingJobId, job.data.documentChunkId);
-      }
+    if (job.data.type === "generateEmbeddingForChunk") {
+      await generateEmbeddingForChunk(job.data.embeddingJobId, job.data.documentChunkId);
+    }
     },
     {
       connection: redisConnection(),
@@ -73,6 +73,12 @@ export function createIngestionWorker() {
 
 async function main() {
   const worker = createIngestionWorker();
+  worker.on("failed", (job, error) => {
+    logError("worker.job_failed", error, { jobId: job?.id, jobName: job?.name, attemptsMade: job?.attemptsMade });
+  });
+  worker.on("completed", (job) => {
+    logInfo("worker.job_completed", { jobId: job.id, jobName: job.name });
+  });
   console.log(`Ingestion worker listening on ${ingestionQueueName}`);
 
   const shutdown = async () => {

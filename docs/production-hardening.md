@@ -1,0 +1,60 @@
+# Production Hardening Guide
+
+Phase 7 adds production-readiness scaffolding without changing the deployment architecture.
+
+## Security
+
+- Middleware applies CSP, HSTS, frame, referrer, and content-type headers.
+- Requests receive `x-request-id` and `x-correlation-id` headers.
+- API responses and logs pass through secret redaction helpers.
+- Upload validation scaffolds enforce filename, MIME type, and size limits before document ingestion is enabled.
+- Retrieved RAG context is wrapped as untrusted source content to reduce prompt injection risk.
+- SSRF protection blocks private, link-local, metadata, multicast, benchmark, and reserved ranges.
+
+## Governance
+
+Organization-level governance records are scaffolded:
+
+- `FeatureFlag`
+- `OrganizationAiPolicy`
+- `DataRetentionPolicy`
+- `ComplianceSetting`
+
+The `/api/governance/[organizationId]` endpoint exposes admin-only read/update scaffolding. User export/delete requests are audit-only scaffolds until asynchronous workflows are implemented.
+
+## Observability
+
+- Structured logs include redaction and can carry request/correlation IDs.
+- Health endpoints:
+  - `/api/health/live`
+  - `/api/health/ready`
+- Queue health helpers expose waiting, active, delayed, completed, and failed job counts for future dashboards.
+- The logger shape is OpenTelemetry and Azure Monitor ready: JSON events can be forwarded without parsing plain text.
+
+## Resilience
+
+- Retry and timeout helpers are available in `lib/resilience/retry.ts`.
+- BullMQ failed jobs are retained for dead-letter inspection.
+- Workers log job completion and failure events.
+- Provider routing already skips circuit-open providers and uses fallback chains.
+
+## Deployment Readiness
+
+Vercel should run only the Next.js app. Azure Container Apps should run only the worker image. Production secrets belong in Vercel environment variables, Azure Container Apps secrets, Azure Key Vault, or GitHub Actions secrets.
+
+Before production release:
+
+- Apply Prisma migrations to Azure PostgreSQL.
+- Confirm pgvector is enabled.
+- Confirm Redis uses TLS.
+- Confirm Blob container exists.
+- Confirm worker ingress is disabled.
+- Confirm Vercel build uses `npm run build`, which regenerates Prisma Client.
+- Confirm `/api/health/ready` is healthy after secrets are configured.
+
+## Rollback
+
+- Roll back Vercel to the previous deployment for frontend/API issues.
+- Roll back Azure Container Apps to the previous worker image tag for worker issues.
+- Database migrations should be reviewed before production; create explicit down/rollback SQL for destructive changes.
+- Keep failed BullMQ jobs for replay or inspection before purging queues.

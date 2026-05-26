@@ -30,6 +30,12 @@ enum AuditAction {
   LLM_PROVIDER_UPDATED
   MODEL_CONFIG_CREATED
   MODEL_CONFIG_UPDATED
+  FEATURE_FLAG_UPDATED
+  AI_POLICY_UPDATED
+  DATA_RETENTION_UPDATED
+  COMPLIANCE_SETTING_UPDATED
+  USER_DATA_EXPORT_REQUESTED
+  USER_DATA_DELETE_REQUESTED
 }
 
 enum AuditTargetType {
@@ -45,6 +51,11 @@ enum AuditTargetType {
   BUDGET_ALERT
   LLM_PROVIDER
   MODEL_CONFIG
+  FEATURE_FLAG
+  AI_POLICY
+  DATA_RETENTION_POLICY
+  COMPLIANCE_SETTING
+  USER_DATA_REQUEST
 }
 
 enum MembershipStatus {
@@ -161,6 +172,13 @@ enum RoutingPolicy {
   FALLBACK_CHAIN
 }
 
+enum DataRetentionMode {
+  STANDARD
+  EXTENDED
+  CUSTOM
+  LEGAL_HOLD
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -241,7 +259,7 @@ model Organization {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  createdBy        User              @relation("OrganizationCreator", fields: [createdById], references: [id])
+  createdBy        User                  @relation("OrganizationCreator", fields: [createdById], references: [id])
   memberships      Membership[]
   workspaces       Workspace[]
   roles            Role[]
@@ -261,6 +279,10 @@ model Organization {
   modelConfigs     ModelConfig[]
   budgets          Budget[]
   budgetAlerts     BudgetAlert[]
+  featureFlags     FeatureFlag[]
+  aiPolicy         OrganizationAiPolicy?
+  dataRetention    DataRetentionPolicy?
+  compliance       ComplianceSetting?
 
   @@index([createdById])
   @@index([deletedAt])
@@ -391,6 +413,66 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([action, createdAt])
+}
+
+model FeatureFlag {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  description    String?
+  isEnabled      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([organizationId, isEnabled])
+}
+
+model OrganizationAiPolicy {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  allowedModels       String[] @default([])
+  blockedModels       String[] @default([])
+  requireCitations    Boolean  @default(true)
+  allowUploads        Boolean  @default(false)
+  moderationEnabled   Boolean  @default(false)
+  promptInjectionMode String   @default("detect")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model DataRetentionPolicy {
+  id                    String            @id @default(cuid())
+  organizationId        String            @unique
+  mode                  DataRetentionMode @default(STANDARD)
+  chatRetentionDays     Int               @default(365)
+  documentRetentionDays Int               @default(365)
+  auditRetentionDays    Int               @default(2555)
+  legalHoldEnabled      Boolean           @default(false)
+  exportEnabled         Boolean           @default(true)
+  deleteEnabled         Boolean           @default(true)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ComplianceSetting {
+  id                         String   @id @default(cuid())
+  organizationId             String   @unique
+  region                     String?
+  piiLoggingEnabled          Boolean  @default(false)
+  applicationInsightsEnabled Boolean  @default(false)
+  exportRequestsEnabled      Boolean  @default(true)
+  deleteRequestsEnabled      Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model KnowledgeSource {
