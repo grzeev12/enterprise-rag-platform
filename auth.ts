@@ -74,16 +74,39 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user?.id) {
-        token.sub = user.id;
+      try {
+        if (user?.id) {
+          token.sub = user.id;
+        }
+      } catch (error) {
+        logError("auth.callback.jwt_failed", error);
       }
       return token;
     },
     session({ session, token }) {
-      if (session.user && token.sub) {
-        session.user.id = token.sub;
+      try {
+        if (session.user && token?.sub) {
+          session.user.id = token.sub;
+        }
+      } catch (error) {
+        logError("auth.callback.session_failed", error);
       }
       return session;
+    }
+  },
+  logger: {
+    error(error) {
+      logError("auth.nextauth.error", error, {
+        name: error.name,
+        type: "type" in error ? error.type : undefined,
+        cause: "cause" in error ? error.cause : undefined
+      });
+    },
+    warn(code) {
+      logInfo("auth.nextauth.warn", { code });
+    },
+    debug(message, metadata) {
+      logInfo("auth.nextauth.debug", { message, metadata });
     }
   },
   trustHost: true

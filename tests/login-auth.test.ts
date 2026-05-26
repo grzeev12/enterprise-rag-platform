@@ -21,6 +21,7 @@ describe("login auth helpers", () => {
 
   it("maps configuration and unknown failures separately", () => {
     expect(classifyLoginResult({ ok: false, error: "Configuration" })).toBe("missing_configuration");
+    expect(classifyLoginResult({ ok: false, error: "CallbackRouteError", status: 400 })).toBe("server_error");
     expect(classifyLoginResult(undefined)).toBe("server_error");
   });
 

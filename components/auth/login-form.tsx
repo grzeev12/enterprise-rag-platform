@@ -42,7 +42,7 @@ export function LoginForm() {
         router.push(result?.url ? safeCallbackUrl(result.url, callbackUrl) : callbackUrl);
         router.refresh();
       } catch {
-        setError(loginErrorMessage("server_error"));
+        setError(`${loginErrorMessage("server_error")} The authentication request did not complete.`);
       }
     });
   }

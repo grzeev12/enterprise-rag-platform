@@ -25,6 +25,7 @@ export function classifyLoginResult(result: LoginResultLike): LoginFailureKind |
   if (result.ok && !result.error) return null;
   if (result.error === "CredentialsSignin" || result.status === 401) return "invalid_credentials";
   if (result.error === "Configuration") return "missing_configuration";
+  if (result.error === "CallbackRouteError" || result.status === 400) return "server_error";
   return result.error ? "server_error" : null;
 }
 
@@ -35,5 +36,5 @@ export function loginErrorMessage(kind: LoginFailureKind) {
   if (kind === "missing_configuration") {
     return "Sign in is not configured correctly. Please contact an administrator.";
   }
-  return "We could not sign you in right now. Please try again.";
+  return "We could not sign you in right now. Please try again or contact an administrator.";
 }
