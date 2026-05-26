@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isAuthDebugEnabled } from "@/lib/auth-debug";
+import { decideAuthRoute, isProtectedAppPath } from "@/lib/auth-route-policy";
 import { getAuthSecret } from "@/lib/auth-runtime";
 import { applySecurityHeaders } from "@/lib/security/headers";
 
-const protectedPrefixes = ["/dashboard", "/onboarding", "/organizations", "/workspaces", "/admin", "/finops", "/llm-gateway"];
 const authCookieCandidates = [
   { cookieName: "__Secure-authjs.session-token", salt: "authjs.session-token" },
   { cookieName: "authjs.session-token", salt: "authjs.session-token" },
@@ -15,28 +15,29 @@ const authCookieCandidates = [
 export default async function middleware(request: NextRequest) {
   const { nextUrl } = request;
   const pathname = nextUrl.pathname;
-  const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
-  const isLoginPage = pathname === "/login";
   const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
   const correlationId = request.headers.get("x-correlation-id") ?? requestId;
   const hasSessionTokenCookie = hasAuthSessionCookie(request);
   const token = await readAuthToken(request);
   const hasToken = Boolean(token);
+  const authenticated = hasToken || (isProtectedAppPath(pathname) && hasSessionTokenCookie);
+  const decision = decideAuthRoute(pathname, authenticated);
 
-  if (isLoginPage && hasToken) {
-    const dashboardUrl = new URL("/dashboard", nextUrl);
-    logMiddlewareDecision({ pathname, hasSessionTokenCookie, authState: hasToken, isLoginPage, redirectTarget: dashboardUrl.pathname });
-    return withHeaders(NextResponse.redirect(dashboardUrl), requestId, correlationId);
+  if (decision.action === "redirect") {
+    const redirectUrl = new URL(decision.redirectTarget, nextUrl);
+    if (redirectUrl.pathname === "/login" && !redirectUrl.searchParams.has("callbackUrl")) {
+      redirectUrl.searchParams.set("callbackUrl", `${nextUrl.pathname}${nextUrl.search}`);
+    }
+    logMiddlewareDecision({
+      pathname,
+      authenticated,
+      action: "redirect",
+      redirectTarget: `${redirectUrl.pathname}${redirectUrl.search}`
+    });
+    return withHeaders(NextResponse.redirect(redirectUrl), requestId, correlationId);
   }
 
-  if (isProtected && !hasToken) {
-    const loginUrl = new URL("/login", nextUrl);
-    loginUrl.searchParams.set("callbackUrl", `${nextUrl.pathname}${nextUrl.search}`);
-    logMiddlewareDecision({ pathname, hasSessionTokenCookie, authState: hasToken, isLoginPage, redirectTarget: `${loginUrl.pathname}${loginUrl.search}` });
-    return withHeaders(NextResponse.redirect(loginUrl), requestId, correlationId);
-  }
-
-  logMiddlewareDecision({ pathname, hasSessionTokenCookie, authState: hasToken, isLoginPage, redirectTarget: null });
+  logMiddlewareDecision({ pathname, authenticated, action: "allow", redirectTarget: null });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-request-id", requestId);
   requestHeaders.set("x-correlation-id", correlationId);
@@ -82,9 +83,8 @@ function withHeaders(response: NextResponse, requestId: string, correlationId: s
 
 function logMiddlewareDecision(input: {
   pathname: string;
-  hasSessionTokenCookie: boolean;
-  authState: boolean;
-  isLoginPage: boolean;
+  authenticated: boolean;
+  action: "allow" | "redirect";
   redirectTarget: string | null;
 }) {
   if (!isAuthDebugEnabled()) return;
@@ -94,9 +94,8 @@ function logMiddlewareDecision(input: {
       level: "info",
       event: "auth.middleware",
       pathname: input.pathname,
-      hasSessionTokenCookie: input.hasSessionTokenCookie,
-      authState: input.authState,
-      isLoginPage: input.isLoginPage,
+      authenticated: input.authenticated,
+      action: input.action,
       redirectTarget: input.redirectTarget,
       at: new Date().toISOString()
     })
