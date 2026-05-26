@@ -6,8 +6,8 @@ import {
   EmbeddingJobStatus,
   KnowledgeSourceStatus
 } from "@prisma/client";
-import { getAiProvider } from "@/lib/ai/gateway";
 import { defaultEmbeddingModel } from "@/lib/ai/openai-provider";
+import { resolveModelRoute } from "@/lib/ai/router";
 import { recordTokenUsage } from "@/lib/ai/usage";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
@@ -289,13 +289,18 @@ async function generateEmbeddingForChunk(embeddingJobId: string, documentChunkId
   }
 
   try {
-    const provider = getAiProvider("openai");
-    const model = job.model || defaultEmbeddingModel();
+    const route = await resolveModelRoute({
+      organizationId: job.organizationId,
+      workspaceId: job.workspaceId,
+      kind: "embedding"
+    });
+    const model = job.model || route.model || defaultEmbeddingModel();
     const aiRequest = await prisma.aiRequest.create({
       data: {
         organizationId: job.organizationId,
         workspaceId: job.workspaceId,
         userId: job.createdById ?? null,
+        providerId: route.providerId ?? null,
         model,
         type: "EMBEDDING",
         status: "PENDING",
@@ -303,7 +308,7 @@ async function generateEmbeddingForChunk(embeddingJobId: string, documentChunkId
       }
     });
 
-    const result = await provider.createEmbedding(chunk.content, { model });
+    const result = await route.provider.createEmbedding(chunk.content, { model });
     await upsertChunkEmbedding({
       organizationId: job.organizationId,
       workspaceId: job.workspaceId,

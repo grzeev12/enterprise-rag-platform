@@ -32,6 +32,7 @@ export interface AiProvider {
   chatCompletion(messages: ChatMessage[], options?: AiRequestOptions): Promise<ChatCompletionResult>;
   streamChatCompletion(messages: ChatMessage[], options?: AiRequestOptions): AsyncIterable<StreamDelta>;
   createEmbedding(input: string, options?: AiEmbeddingOptions): Promise<EmbeddingResult>;
+  healthCheck?(): Promise<ProviderHealth>;
 }
 
 export type AiRequestOptions = {
@@ -56,3 +57,10 @@ export class AiProviderError extends Error {
     super(message);
   }
 }
+
+export type ProviderHealth = {
+  ok: boolean;
+  status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE";
+  latencyMs?: number;
+  safeMessage?: string;
+};

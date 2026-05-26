@@ -1,5 +1,4 @@
-import { getAiProvider } from "@/lib/ai/gateway";
-import { defaultEmbeddingModel } from "@/lib/ai/openai-provider";
+import { resolveModelRoute } from "@/lib/ai/router";
 import { recordTokenUsage } from "@/lib/ai/usage";
 import { readIntEnv, readNumberEnv } from "@/lib/env";
 import { logInfo } from "@/lib/observability/logger";
@@ -12,16 +11,19 @@ export async function retrieveWorkspaceContext(input: {
   query: string;
   aiRequestId?: string;
 }) {
-  const provider = getAiProvider("openai");
-  const embeddingModel = defaultEmbeddingModel();
-  const embedding = await provider.createEmbedding(input.query, { model: embeddingModel });
+  const route = await resolveModelRoute({
+    organizationId: input.organizationId,
+    workspaceId: input.workspaceId,
+    kind: "embedding"
+  });
+  const embedding = await route.provider.createEmbedding(input.query, { model: route.model });
 
   await recordTokenUsage({
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
     userId: input.userId,
     aiRequestId: input.aiRequestId,
-    model: embeddingModel,
+    model: route.model,
     type: "EMBEDDING",
     usage: embedding.usage
   });

@@ -22,7 +22,7 @@ const navItems = [
   { href: "/finops", label: "FinOps" },
   { href: "/dashboard?module=ingestion", label: "Ingestion" },
   { href: "/dashboard?module=rag", label: "RAG Chat" },
-  { href: "/dashboard?module=gateway", label: "LLM Gateway" }
+  { href: "/llm-gateway", label: "LLM Gateway" }
 ];
 
 export function AppShell({ children, user }: AppShellProps) {

@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { getAiProvider } from "@/lib/ai/gateway";
-import { defaultChatModel } from "@/lib/ai/openai-provider";
+import { resolveModelRoute, streamChatWithFallback } from "@/lib/ai/router";
 import { recordTokenUsage } from "@/lib/ai/usage";
 import { requireWorkspaceAccess } from "@/lib/authz";
 import { requireCurrentUser } from "@/lib/current-user";
@@ -46,12 +45,19 @@ export async function POST(request: Request, { params }: Params) {
       }
     });
 
+    const route = await resolveModelRoute({
+      organizationId: chat.organizationId,
+      workspaceId: chat.workspaceId,
+      kind: "chat"
+    });
+
     const aiRequest = await prisma.aiRequest.create({
       data: {
         organizationId: chat.organizationId,
         workspaceId: chat.workspaceId,
         userId: user.id,
-        model: defaultChatModel(),
+        providerId: route.providerId ?? null,
+        model: route.model,
         type: "STREAMING_CHAT_COMPLETION",
         status: "PENDING",
         chatId: chat.id,
@@ -63,6 +69,7 @@ export async function POST(request: Request, { params }: Params) {
       async start(controller) {
         let assistantContent = "";
         let usage = undefined as { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+        let selectedModel = route.model;
         try {
           const chunks = await retrieveWorkspaceContext({
             organizationId: chat.organizationId,
@@ -77,13 +84,24 @@ export async function POST(request: Request, { params }: Params) {
             controller.enqueue(encoder.encode(assistantContent));
           } else {
             await prisma.aiRequest.update({ where: { id: aiRequest.id }, data: { status: "STREAMING" } });
-            const provider = getAiProvider("openai");
             const messages = buildRagMessages(input.content, chunks);
-            for await (const delta of provider.streamChatCompletion(messages, {
-              model: defaultChatModel(),
+            const routedStream = await streamChatWithFallback({
+              route,
+              messages,
               temperature: 0.2,
               maxOutputTokens: readIntEnv("RAG_MAX_OUTPUT_TOKENS", 800)
-            })) {
+            });
+            if (routedStream.route.model !== route.model || routedStream.route.providerId !== route.providerId) {
+              await prisma.aiRequest.update({
+                where: { id: aiRequest.id },
+                data: {
+                  providerId: routedStream.route.providerId ?? null,
+                  model: routedStream.route.model
+                }
+              });
+            }
+            selectedModel = routedStream.route.model;
+            for await (const delta of routedStream) {
               if (delta.content) {
                 assistantContent += delta.content;
                 controller.enqueue(encoder.encode(delta.content));
@@ -132,7 +150,7 @@ export async function POST(request: Request, { params }: Params) {
             workspaceId: chat.workspaceId,
             userId: user.id,
             aiRequestId: aiRequest.id,
-            model: defaultChatModel(),
+            model: selectedModel,
             type: "STREAMING_CHAT_COMPLETION",
             usage
           });

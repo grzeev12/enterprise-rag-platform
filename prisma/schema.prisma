@@ -26,6 +26,10 @@ enum AuditAction {
   BUDGET_CREATED
   BUDGET_UPDATED
   BUDGET_ALERT_CREATED
+  LLM_PROVIDER_CREATED
+  LLM_PROVIDER_UPDATED
+  MODEL_CONFIG_CREATED
+  MODEL_CONFIG_UPDATED
 }
 
 enum AuditTargetType {
@@ -39,6 +43,8 @@ enum AuditTargetType {
   CHAT
   BUDGET
   BUDGET_ALERT
+  LLM_PROVIDER
+  MODEL_CONFIG
 }
 
 enum MembershipStatus {
@@ -138,6 +144,21 @@ enum BudgetAlertStatus {
   OPEN
   ACKNOWLEDGED
   RESOLVED
+}
+
+enum LlmProviderStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  UNAVAILABLE
+}
+
+enum RoutingPolicy {
+  DEFAULT
+  COST_FIRST
+  LATENCY_FIRST
+  QUALITY_FIRST
+  FALLBACK_CHAIN
 }
 
 model User {
@@ -580,14 +601,22 @@ model EmbeddingJob {
 }
 
 model LlmProvider {
-  id             String   @id @default(cuid())
-  organizationId String?
-  key            String
-  name           String
-  baseUrl        String?
-  isEnabled      Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String            @id @default(cuid())
+  organizationId  String?
+  key             String
+  name            String
+  baseUrl         String?
+  apiKeySecretRef String?
+  status          LlmProviderStatus @default(UNKNOWN)
+  lastCheckedAt   DateTime?
+  lastError       String?           @db.Text
+  timeoutMs       Int               @default(30000)
+  maxRetries      Int               @default(2)
+  circuitOpen     Boolean           @default(false)
+  circuitOpenedAt DateTime?
+  isEnabled       Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   modelConfigs ModelConfig[]
@@ -598,7 +627,7 @@ model LlmProvider {
 }
 
 model ModelConfig {
-  id                     String   @id @default(cuid())
+  id                     String        @id @default(cuid())
   organizationId         String?
   workspaceId            String?
   providerId             String
@@ -606,15 +635,21 @@ model ModelConfig {
   displayName            String
   kind                   String
   modelName              String
+  routingPolicy          RoutingPolicy @default(DEFAULT)
+  priority               Int           @default(100)
+  qualityTier            Int           @default(3)
+  expectedLatencyMs      Int?
+  isAllowed              Boolean       @default(true)
+  isBlocked              Boolean       @default(false)
   dimensions             Int?
   maxInputTokens         Int?
   maxOutputTokens        Int?
-  promptTokenCostUsd     Decimal? @db.Decimal(12, 8)
-  completionTokenCostUsd Decimal? @db.Decimal(12, 8)
-  isDefault              Boolean  @default(false)
-  isEnabled              Boolean  @default(true)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  promptTokenCostUsd     Decimal?      @db.Decimal(12, 8)
+  completionTokenCostUsd Decimal?      @db.Decimal(12, 8)
+  isDefault              Boolean       @default(false)
+  isEnabled              Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

@@ -7,15 +7,24 @@ export class OpenAiProvider implements AiProvider {
   key = "openai";
   private client: OpenAI | null = null;
 
+  constructor(
+    private config: {
+      apiKeyEnv?: string;
+      baseUrl?: string | null;
+      timeoutMs?: number;
+      maxRetries?: number;
+    } = {}
+  ) {}
+
   private getClient() {
     if (this.client) return this.client;
 
-    const apiKey = requireEnv("OPENAI_API_KEY", "OpenAI provider");
+    const apiKey = requireEnv(this.config.apiKeyEnv ?? "OPENAI_API_KEY", "OpenAI provider");
     this.client = new OpenAI({
       apiKey,
-      baseURL: readEnv("OPENAI_BASE_URL"),
-      timeout: readIntEnv("OPENAI_TIMEOUT_MS", 30000),
-      maxRetries: readIntEnv("OPENAI_MAX_RETRIES", 2)
+      baseURL: this.config.baseUrl ?? readEnv("OPENAI_BASE_URL"),
+      timeout: this.config.timeoutMs ?? readIntEnv("OPENAI_TIMEOUT_MS", 30000),
+      maxRetries: this.config.maxRetries ?? readIntEnv("OPENAI_MAX_RETRIES", 2)
     });
 
     return this.client;
@@ -77,6 +86,22 @@ export class OpenAiProvider implements AiProvider {
       };
     } catch (error) {
       throw normalizeOpenAiError(error);
+    }
+  }
+
+  async healthCheck() {
+    const started = Date.now();
+    try {
+      await this.getClient().models.list();
+      return { ok: true, status: "HEALTHY" as const, latencyMs: Date.now() - started };
+    } catch (error) {
+      const normalized = normalizeOpenAiError(error);
+      return {
+        ok: false,
+        status: normalized.code === "MISSING_OPENAI_API_KEY" ? "UNAVAILABLE" as const : "DEGRADED" as const,
+        latencyMs: Date.now() - started,
+        safeMessage: normalized.safeMessage
+      };
     }
   }
 }
