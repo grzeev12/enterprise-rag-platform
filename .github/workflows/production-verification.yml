@@ -1,0 +1,72 @@
+name: Production Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify Neon-backed production readiness
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      AUTH_URL: ${{ secrets.NEXTAUTH_URL || 'https://production.example.invalid' }}
+      NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'https://production.example.invalid' }}
+      NEXT_PUBLIC_APP_URL: ${{ secrets.NEXTAUTH_URL || 'https://production.example.invalid' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_CHAT_MODEL: gpt-4o-mini
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      OBJECT_STORAGE_PROVIDER: ${{ secrets.OBJECT_STORAGE_PROVIDER || 'azure-blob' }}
+      OBJECT_STORAGE_CONTAINER: ${{ secrets.OBJECT_STORAGE_CONTAINER || 'enterprise-ai-saas-production' }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PRIVATE_BUILD_WORKER: "0"
+    steps:
+      - name: Verify required secrets
+        run: |
+          missing=0
+          for name in DATABASE_URL NEXTAUTH_SECRET OPENAI_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} GitHub Secret is required"
+              missing=1
+            else
+              echo "::add-mask::${!name}"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          if [ -n "$REDIS_URL" ]; then echo "::add-mask::$REDIS_URL"; fi
+          if [ -n "$AZURE_STORAGE_CONNECTION_STRING" ]; then echo "::add-mask::$AZURE_STORAGE_CONNECTION_STRING"; fi
+          if [ -n "$R2_SECRET_ACCESS_KEY" ]; then echo "::add-mask::$R2_SECRET_ACCESS_KEY"; fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Tenant-aware production smoke checks
+        run: npm run production:smoke
+
+      - name: Build with production-like environment
+        run: npm run build

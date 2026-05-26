@@ -27,15 +27,76 @@ Companion docs:
 ## GitHub Repository
 
 1. Push the project to `main`.
-2. Confirm `.github/workflows/frontend-ci.yml` and `.github/workflows/worker-ci.yml` run on push and pull request.
-3. Store deployment credentials as GitHub Actions secrets only if you later add automated deployments.
+2. Confirm `.github/workflows/ci.yml`, `.github/workflows/frontend-ci.yml`, and `.github/workflows/worker-ci.yml` run on push and pull request.
+3. Store production credentials as GitHub Actions secrets, never in local `.env.local` files.
 
 CI is intentionally split:
 
+- `.github/workflows/ci.yml` is the cloud-only default CI path and runs without production secrets.
 - `.github/workflows/frontend-ci.yml` validates the Vercel-hosted Next.js app.
 - `.github/workflows/worker-ci.yml` validates the worker service and builds the worker container image.
+- `.github/workflows/production-db-migrate.yml` manually deploys Prisma migrations to Neon.
+- `.github/workflows/production-verification.yml` manually verifies production readiness against Neon.
 - `.github/workflows/frontend-deploy.yml` is a manual Vercel deployment path for the Next.js app.
 - `.github/workflows/worker-deploy.yml` is a manual Azure Container Apps deployment path for the worker image when the project migrates to Azure-managed workers.
+
+Default CI performs checkout, dependency install, Prisma generation, Prisma validation, typecheck, lint, tests, and a Next.js build with blank optional infrastructure variables.
+
+Production migration and deployment workflows are manual by default so teams can wire environment approvals, protected branches, and release tagging without coupling frontend and worker releases.
+
+## GitHub Secrets
+
+Production operations run in GitHub Actions using GitHub Secrets. Developers should not need a local `.env.local` for production verification, migrations, or deployment checks.
+
+Required GitHub Secrets:
+
+```bash
+DATABASE_URL="<neon-production-url>"
+NEXTAUTH_SECRET="<production-auth-secret>"
+OPENAI_API_KEY="<production-openai-api-key>"
+```
+
+Optional GitHub Secrets:
+
+```bash
+NEXTAUTH_URL="https://app.example.com"
+REDIS_URL="rediss://default:<upstash-password>@<upstash-host>:6379"
+OBJECT_STORAGE_PROVIDER="azure-blob"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
+AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
+AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas-production"
+R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+R2_ACCESS_KEY_ID="<r2-access-key>"
+R2_SECRET_ACCESS_KEY="<r2-secret-key>"
+```
+
+Safety rules:
+
+- Never echo secrets in workflow steps.
+- Mask secrets before running commands that may include environment details.
+- Do not run migrations on every push.
+- Run `Production DB Migrate` manually after review.
+- Use GitHub environment approvals for the `production` environment.
+
+## Cloud-Only Production Workflows
+
+`CI` runs on pull requests and pushes to `main` without production secrets. It intentionally uses a placeholder `DATABASE_URL` for Prisma schema validation and blank optional infrastructure env vars for build-time safety.
+
+`Production DB Migrate` is manual only. It:
+
+- requires `DATABASE_URL` from GitHub Secrets
+- runs Prisma generate
+- runs `prisma migrate deploy`
+- verifies pgvector through the production smoke-check script
+- runs a safe database connectivity check without printing the URL
+
+`Production Verification` is manual only. It:
+
+- requires `DATABASE_URL`, `NEXTAUTH_SECRET`, and `OPENAI_API_KEY`
+- runs Prisma validation
+- runs tenant-aware smoke checks
+- builds with production-like env values
+- verifies required env presence without printing secret values
 
 ## Vercel
 
@@ -59,6 +120,8 @@ OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 
 Notes:
 
+- Vercel runtime env vars are configured separately from GitHub Secrets.
+- Vercel should have `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, `OPENAI_API_KEY`, and any optional Redis/object-storage variables used at runtime.
 - Vercel API routes enqueue crawl/index jobs but do not process them.
 - Vercel must not build or run `Dockerfile.worker`.
 - Run Prisma migrations from CI/CD or an operator workstation, not inside Vercel serverless requests.
@@ -75,18 +138,52 @@ Requirements:
 - A pooled URL can be used for serverless app/API access if compatible with Prisma migrations; use the direct URL for migrations when Neon recommends it.
 - Keep tenant isolation in application queries; Neon is a shared production database for all tenants.
 
-Enable pgvector:
+Recommended connection usage:
+
+- Vercel app runtime: use the Neon pooled connection string when available.
+- Worker runtime: use the same pooled runtime URL unless long-running worker load requires a direct URL.
+- Migrations: use Neon's direct connection string when possible, because migration locks and extension DDL are safer outside a transaction-pooled connection.
+
+Enable pgvector before applying migrations:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-Run migrations:
+Verify pgvector:
+
+```sql
+SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
+```
+
+Run migrations without printing the secret:
 
 ```bash
-DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<database>?sslmode=require" \
-npx prisma migrate deploy
+DATABASE_URL="$NEON_DATABASE_URL" npx prisma migrate deploy
 ```
+
+Validate Prisma against Neon:
+
+```bash
+DATABASE_URL="$NEON_DATABASE_URL" npx prisma validate
+```
+
+Build against the real production database URL:
+
+```bash
+DATABASE_URL="$NEON_DATABASE_URL" npm run build
+```
+
+Tenant verification checklist after migration:
+
+```sql
+SELECT COUNT(*) FROM "Organization";
+SELECT COUNT(*) FROM "Workspace";
+SELECT COUNT(*) FROM "Membership";
+SELECT COUNT(*) FROM "AuditLog";
+```
+
+Application-level verification should use authenticated API/UI checks so every organization and workspace query still passes through membership filters. Do not run broad production data dumps in the terminal.
 
 ## Upstash Redis and BullMQ
 

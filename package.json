@@ -16,6 +16,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
+    "production:smoke": "tsx scripts/production-smoke-check.ts",
     "worker:ingestion": "tsx workers/ingestion-worker.ts",
     "worker:dev": "tsx workers/ingestion-worker.ts"
   },

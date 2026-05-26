@@ -1,0 +1,46 @@
+name: Production DB Migrate
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Deploy Prisma migrations to Neon
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Verify required secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL GitHub Secret is required"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Prisma migrate deploy
+        run: npx prisma migrate deploy
+
+      - name: Verify pgvector and connectivity
+        run: npm run production:smoke

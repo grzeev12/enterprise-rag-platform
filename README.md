@@ -27,6 +27,36 @@ Docker is used for local development and for packaging the worker image. The Nex
 See [deployment docs](/Users/zeevgrinberg/Documents/Search/docs/deployment.md), [cost-optimized MVP architecture](/Users/zeevgrinberg/Documents/Search/docs/cost-optimized-mvp.md), [infrastructure abstraction notes](/Users/zeevgrinberg/Documents/Search/docs/infrastructure.md), [Azure Container Apps guide](/Users/zeevgrinberg/Documents/Search/docs/azure-container-apps.md), and [Azure environment checklist](/Users/zeevgrinberg/Documents/Search/docs/azure-env-checklist.md) for deployment setup.
 See [production hardening](/Users/zeevgrinberg/Documents/Search/docs/production-hardening.md) and [incident recovery](/Users/zeevgrinberg/Documents/Search/docs/incident-recovery.md) for enterprise readiness notes.
 
+## Cloud-Only Production Operations
+
+Production validation and database operations run in GitHub Actions, not from a developer laptop. No local `.env.local` is required for production.
+
+Required GitHub Secrets:
+
+- `DATABASE_URL`: Neon production database URL. Prefer the direct URL for migrations if Neon provides both direct and pooled URLs.
+- `NEXTAUTH_SECRET`: production Auth.js/NextAuth secret. The workflows map it to `AUTH_SECRET`.
+- `OPENAI_API_KEY`: production OpenAI key for build-time/runtime readiness checks.
+
+Optional GitHub Secrets:
+
+- `NEXTAUTH_URL`
+- `REDIS_URL`
+- `OBJECT_STORAGE_PROVIDER`
+- `OBJECT_STORAGE_CONTAINER`
+- `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_CONTAINER_NAME`
+- `R2_ENDPOINT`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+
+Workflows:
+
+- `CI`: runs automatically on pull requests and pushes to `main`; it uses blank optional infrastructure values and does not require secrets.
+- `Production DB Migrate`: manual only; runs `prisma migrate deploy`, verifies pgvector, and runs safe DB connectivity checks.
+- `Production Verification`: manual only; validates Prisma, runs tenant-aware smoke checks, and builds with production-like env.
+
+Vercel still needs runtime environment variables configured separately in the Vercel dashboard: `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, `OPENAI_API_KEY`, and optional Redis/object-storage variables.
+
 ## Stack
 
 - Next.js App Router
@@ -218,6 +248,12 @@ Local/Neon/Azure PostgreSQL must enable pgvector:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+For Neon production, use the pooled connection string in Vercel and the direct connection string for migrations when Neon provides both. Verify pgvector before deployment with:
+
+```sql
+SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 ```
 
 The Phase 3 SQL migration is:
