@@ -1,17 +1,10 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import bcrypt from "bcryptjs";
-import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { readEnv } from "@/lib/env";
-import { isAuthConfigured } from "@/lib/auth-runtime";
+import { authorizeCredentials } from "@/lib/auth-credentials";
 import { logError, logInfo } from "@/lib/observability/logger";
-
-const credentialsSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1)
-});
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...(readEnv("DATABASE_URL") ? { adapter: PrismaAdapter(prisma) } : {}),
@@ -30,45 +23,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(rawCredentials) {
-        if (!isAuthConfigured()) {
-          logError("auth.credentials.missing_configuration", new Error("Auth secret is not configured"));
-          throw new Error("Authentication is not configured");
-        }
+        const result = await authorizeCredentials(rawCredentials);
 
-        const parsed = credentialsSchema.safeParse(rawCredentials);
-        if (!parsed.success) {
-          logInfo("auth.credentials.invalid_payload", { reason: "invalid_credentials_shape" });
+        if (!result.authorized) {
+          if (result.reason === "missing_configuration") {
+            logError("auth.credentials.missing_configuration", new Error("Auth secret is not configured"));
+            throw new Error("Authentication is not configured");
+          }
+          if (result.reason === "invalid_credentials_shape") {
+            logInfo("auth.credentials.invalid_payload", { reason: result.reason });
+            return null;
+          }
+          logInfo("auth.credentials.rejected", { email: result.email, reason: result.reason });
           return null;
         }
 
-        const email = parsed.data.email.toLowerCase();
+        logInfo("auth.credentials.accepted", { email: result.user.email, userId: result.user.id });
 
-        const user = await prisma.user.findUnique({
-          where: { email }
-        });
-
-        if (!user?.passwordHash || user.deletedAt) {
-          logInfo("auth.credentials.rejected", {
-            email,
-            reason: user?.deletedAt ? "deleted_user" : "missing_user_or_password_hash"
-          });
-          return null;
-        }
-
-        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        if (!valid) {
-          logInfo("auth.credentials.rejected", { email, reason: "invalid_password" });
-          return null;
-        }
-
-        logInfo("auth.credentials.accepted", { email, userId: user.id });
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image
-        };
+        return result.user;
       }
     })
   ],

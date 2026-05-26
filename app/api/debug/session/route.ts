@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { authDebugNotFound, isAuthDebugEnabled } from "@/lib/auth-debug";
 import { readEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -11,6 +12,10 @@ const authCookieHints = [
 ];
 
 export async function GET(request: NextRequest) {
+  if (!isAuthDebugEnabled()) {
+    return authDebugNotFound();
+  }
+
   const cookieNames = request.cookies.getAll().map((cookie) => cookie.name).sort();
   const hasAuthCookies = cookieNames.some((name) =>
     authCookieHints.some((hint) => name === hint || name.endsWith(`.${hint}`))

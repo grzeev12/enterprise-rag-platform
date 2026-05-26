@@ -10,11 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { classifyLoginResult, loginErrorMessage, safeCallbackUrl } from "@/lib/auth-login";
 
-export function LoginForm() {
+export function LoginForm({ debugEnabled = false }: { debugEnabled?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [debugEvents, setDebugEvents] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
+
+  function addDebugEvent(event: string) {
+    if (!debugEnabled) return;
+    setDebugEvents((events) => [...events, event].slice(-8));
+  }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,6 +30,8 @@ export function LoginForm() {
     const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
 
     setError(null);
+    addDebugEvent("submit started");
+    addDebugEvent(`redirect target: ${callbackUrl}`);
     startTransition(async () => {
       try {
         const result = await signIn("credentials", {
@@ -32,6 +40,9 @@ export function LoginForm() {
           redirect: false,
           callbackUrl
         });
+        addDebugEvent("signIn returned");
+        addDebugEvent(`signIn status: ${result?.status ?? "none"}`);
+        addDebugEvent(`signIn error: ${result?.error ?? "none"}`);
 
         const failure = classifyLoginResult(result);
         if (failure) {
@@ -39,9 +50,12 @@ export function LoginForm() {
           return;
         }
 
-        router.push(result?.url ? safeCallbackUrl(result.url, callbackUrl) : callbackUrl);
+        const redirectTarget = result?.url ? safeCallbackUrl(result.url, callbackUrl) : callbackUrl;
+        addDebugEvent(`redirect target: ${redirectTarget}`);
+        router.push(redirectTarget);
         router.refresh();
       } catch {
+        addDebugEvent("signIn threw");
         setError(`${loginErrorMessage("server_error")} The authentication request did not complete.`);
       }
     });
@@ -71,6 +85,20 @@ export function LoginForm() {
           <Button className="w-full" disabled={pending} type="submit">
             {pending ? "Signing in..." : "Sign in"}
           </Button>
+          {debugEnabled ? (
+            <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <p className="mb-2 font-medium text-foreground">Auth debug</p>
+              {debugEvents.length ? (
+                <ul className="space-y-1">
+                  {debugEvents.map((event, index) => (
+                    <li key={`${event}-${index}`}>{event}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No login events yet.</p>
+              )}
+            </div>
+          ) : null}
         </form>
         <p className="mt-4 text-sm text-muted-foreground">
           New here?{" "}
