@@ -1,0 +1,62 @@
+name: Production Demo Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Check whether the demo admin exists, or seed/update it idempotently
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - seed
+
+jobs:
+  demo-admin:
+    name: Production demo admin
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEMO_ADMIN_PASSWORD: ${{ secrets.DEMO_ADMIN_PASSWORD }}
+      DEMO_ADMIN_MODE: ${{ inputs.mode }}
+      DEMO_ADMIN_EMAIL: demo@example.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mask secrets
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "::add-mask::$DATABASE_URL"
+          fi
+          if [ -n "$DEMO_ADMIN_PASSWORD" ]; then
+            echo "::add-mask::$DEMO_ADMIN_PASSWORD"
+          fi
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL GitHub Secret is required."
+            exit 1
+          fi
+          if [ "$DEMO_ADMIN_MODE" = "seed" ] && [ -z "$DEMO_ADMIN_PASSWORD" ]; then
+            echo "::error::DEMO_ADMIN_PASSWORD GitHub Secret is required when mode=seed."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Check or seed demo admin
+        run: npx tsx scripts/production-demo-admin.ts
