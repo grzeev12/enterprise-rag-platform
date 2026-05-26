@@ -6,7 +6,15 @@ export const runtime = "nodejs";
 const debugEmail = "zeev@example.com";
 const debugPassword = "zeev123";
 
+export async function GET() {
+  return runAuthorizeCheck();
+}
+
 export async function POST() {
+  return runAuthorizeCheck();
+}
+
+async function runAuthorizeCheck() {
   if (!isAuthDebugEnabled()) return authDebugNotFound();
 
   const result = await authorizeCredentials({
