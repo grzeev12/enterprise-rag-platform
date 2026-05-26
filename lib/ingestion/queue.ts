@@ -1,4 +1,5 @@
 import { Queue, type JobsOptions } from "bullmq";
+import { readEnv, requireEnv } from "@/lib/env";
 
 export const ingestionQueueName = "knowledge-ingestion";
 
@@ -35,8 +36,11 @@ export type IngestionJobData =
   | GenerateEmbeddingsForSourceJob
   | GenerateEmbeddingForChunkJob;
 
+let queue: Queue<IngestionJobData> | null = null;
+
 export function redisConnection() {
-  const url = new URL(process.env.REDIS_URL ?? "redis://localhost:6379");
+  const rawUrl = requireEnv("REDIS_URL", "background queues");
+  const url = new URL(rawUrl);
   return {
     host: url.hostname,
     port: Number(url.port || 6379),
@@ -47,36 +51,46 @@ export function redisConnection() {
   };
 }
 
-export const ingestionQueue = new Queue<IngestionJobData>(ingestionQueueName, {
-  connection: redisConnection(),
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 2000
-    },
-    removeOnComplete: 500,
-    removeOnFail: 1000
+export function isQueueConfigured() {
+  return Boolean(readEnv("REDIS_URL"));
+}
+
+export function getIngestionQueue() {
+  if (!queue) {
+    queue = new Queue<IngestionJobData>(ingestionQueueName, {
+      connection: redisConnection(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 2000
+        },
+        removeOnComplete: 500,
+        removeOnFail: 1000
+      }
+    });
   }
-});
+
+  return queue;
+}
 
 export async function enqueueCrawlWebsite(crawlId: string, options: JobsOptions = {}) {
-  return ingestionQueue.add("crawlWebsite", { type: "crawlWebsite", crawlId }, options);
+  return getIngestionQueue().add("crawlWebsite", { type: "crawlWebsite", crawlId }, options);
 }
 
 export async function enqueueProcessCrawlPage(crawlPageId: string, options: JobsOptions = {}) {
-  return ingestionQueue.add("processCrawlPage", { type: "processCrawlPage", crawlPageId }, options);
+  return getIngestionQueue().add("processCrawlPage", { type: "processCrawlPage", crawlPageId }, options);
 }
 
 export async function enqueueChunkDocument(documentId: string, options: JobsOptions = {}) {
-  return ingestionQueue.add("chunkDocument", { type: "chunkDocument", documentId }, options);
+  return getIngestionQueue().add("chunkDocument", { type: "chunkDocument", documentId }, options);
 }
 
 export async function enqueueGenerateEmbeddingsForSource(
   embeddingJobId: string,
   options: JobsOptions = {}
 ) {
-  return ingestionQueue.add(
+  return getIngestionQueue().add(
     "generateEmbeddingsForSource",
     { type: "generateEmbeddingsForSource", embeddingJobId },
     options
@@ -88,7 +102,7 @@ export async function enqueueGenerateEmbeddingForChunk(
   documentChunkId: string,
   options: JobsOptions = {}
 ) {
-  return ingestionQueue.add(
+  return getIngestionQueue().add(
     "generateEmbeddingForChunk",
     { type: "generateEmbeddingForChunk", embeddingJobId, documentChunkId },
     options

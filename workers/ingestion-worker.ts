@@ -32,43 +32,64 @@ import { fetchRobotsPolicy } from "@/lib/ingestion/robots";
 import { logError, logInfo } from "@/lib/observability/logger";
 import { upsertChunkEmbedding } from "@/lib/rag/vector-store";
 import { uploadTextBlob } from "@/lib/storage/blob";
+import { readIntEnv } from "@/lib/env";
 
 const userAgent = "EnterpriseAISaaSBot/0.1 (+respectful crawler)";
 
-new Worker<IngestionJobData>(
-  ingestionQueueName,
-  async (job) => {
-    if (job.data.type === "crawlWebsite") {
-      await crawlWebsite(job.data.crawlId);
-      return;
-    }
+export function createIngestionWorker() {
+  return new Worker<IngestionJobData>(
+    ingestionQueueName,
+    async (job) => {
+      if (job.data.type === "crawlWebsite") {
+        await crawlWebsite(job.data.crawlId);
+        return;
+      }
 
-    if (job.data.type === "processCrawlPage") {
-      await processCrawlPage(job.data.crawlPageId);
-      return;
-    }
+      if (job.data.type === "processCrawlPage") {
+        await processCrawlPage(job.data.crawlPageId);
+        return;
+      }
 
-    if (job.data.type === "chunkDocument") {
-      await chunkDocument(job.data.documentId);
-      return;
-    }
+      if (job.data.type === "chunkDocument") {
+        await chunkDocument(job.data.documentId);
+        return;
+      }
 
-    if (job.data.type === "generateEmbeddingsForSource") {
-      await generateEmbeddingsForSource(job.data.embeddingJobId);
-      return;
-    }
+      if (job.data.type === "generateEmbeddingsForSource") {
+        await generateEmbeddingsForSource(job.data.embeddingJobId);
+        return;
+      }
 
-    if (job.data.type === "generateEmbeddingForChunk") {
-      await generateEmbeddingForChunk(job.data.embeddingJobId, job.data.documentChunkId);
+      if (job.data.type === "generateEmbeddingForChunk") {
+        await generateEmbeddingForChunk(job.data.embeddingJobId, job.data.documentChunkId);
+      }
+    },
+    {
+      connection: redisConnection(),
+      concurrency: readIntEnv("INGESTION_WORKER_CONCURRENCY", 3)
     }
-  },
-  {
-    connection: redisConnection(),
-    concurrency: Number(process.env.INGESTION_WORKER_CONCURRENCY ?? 3)
-  }
-);
+  );
+}
 
-console.log(`Ingestion worker listening on ${ingestionQueueName}`);
+async function main() {
+  const worker = createIngestionWorker();
+  console.log(`Ingestion worker listening on ${ingestionQueueName}`);
+
+  const shutdown = async () => {
+    await worker.close();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
+
+if (process.argv[1]?.includes("ingestion-worker")) {
+  void main().catch((error) => {
+    logError("ingestion_worker.start_failed", error);
+    process.exit(1);
+  });
+}
 
 async function crawlWebsite(crawlId: string) {
   const crawl = await prisma.crawl.findUnique({
@@ -214,7 +235,7 @@ async function generateEmbeddingsForSource(embeddingJobId: string) {
       },
       select: { id: true },
       orderBy: { createdAt: "asc" },
-      take: Number(process.env.EMBEDDING_JOB_MAX_CHUNKS ?? 1000)
+      take: readIntEnv("EMBEDDING_JOB_MAX_CHUNKS", 1000)
     });
 
     await prisma.embeddingJob.update({
@@ -485,8 +506,8 @@ async function chunkDocument(documentId: string) {
   try {
     const chunks = chunkText(
       document.textContent,
-      Number(process.env.CRAWL_CHUNK_SIZE ?? 1200),
-      Number(process.env.CRAWL_CHUNK_OVERLAP ?? 180)
+      readIntEnv("CRAWL_CHUNK_SIZE", 1200),
+      readIntEnv("CRAWL_CHUNK_OVERLAP", 180)
     );
 
     await prisma.$transaction(async (tx) => {

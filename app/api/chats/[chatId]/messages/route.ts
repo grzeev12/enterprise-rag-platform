@@ -5,6 +5,7 @@ import { recordTokenUsage } from "@/lib/ai/usage";
 import { requireWorkspaceAccess } from "@/lib/authz";
 import { requireCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/db";
+import { readIntEnv } from "@/lib/env";
 import { logError, logInfo } from "@/lib/observability/logger";
 import { buildRagMessages } from "@/lib/rag/prompt";
 import { retrieveWorkspaceContext } from "@/lib/rag/retrieval";
@@ -81,7 +82,7 @@ export async function POST(request: Request, { params }: Params) {
             for await (const delta of provider.streamChatCompletion(messages, {
               model: defaultChatModel(),
               temperature: 0.2,
-              maxOutputTokens: Number(process.env.RAG_MAX_OUTPUT_TOKENS ?? 800)
+              maxOutputTokens: readIntEnv("RAG_MAX_OUTPUT_TOKENS", 800)
             })) {
               if (delta.content) {
                 assistantContent += delta.content;

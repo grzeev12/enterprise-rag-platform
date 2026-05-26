@@ -4,6 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { readEnv } from "@/lib/env";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -11,7 +12,7 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  ...(readEnv("DATABASE_URL") ? { adapter: PrismaAdapter(prisma) } : {}),
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 24 * 30

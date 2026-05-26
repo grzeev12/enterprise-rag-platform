@@ -1,27 +1,29 @@
 import OpenAI from "openai";
 import type { ChatMessage, AiProvider, AiRequestOptions, AiEmbeddingOptions, EmbeddingResult } from "@/lib/ai/types";
 import { AiProviderError } from "@/lib/ai/types";
+import { readEnv, readIntEnv, requireEnv } from "@/lib/env";
 
 export class OpenAiProvider implements AiProvider {
   key = "openai";
-  private client: OpenAI;
+  private client: OpenAI | null = null;
 
-  constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new AiProviderError("OPENAI_API_KEY is not configured", "MISSING_OPENAI_API_KEY", "AI provider is not configured.");
-    }
+  private getClient() {
+    if (this.client) return this.client;
+
+    const apiKey = requireEnv("OPENAI_API_KEY", "OpenAI provider");
     this.client = new OpenAI({
       apiKey,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-      timeout: Number(process.env.OPENAI_TIMEOUT_MS ?? 30000),
-      maxRetries: Number(process.env.OPENAI_MAX_RETRIES ?? 2)
+      baseURL: readEnv("OPENAI_BASE_URL"),
+      timeout: readIntEnv("OPENAI_TIMEOUT_MS", 30000),
+      maxRetries: readIntEnv("OPENAI_MAX_RETRIES", 2)
     });
+
+    return this.client;
   }
 
   async chatCompletion(messages: ChatMessage[], options: AiRequestOptions = {}) {
     try {
-      const response = await this.client.chat.completions.create({
+      const response = await this.getClient().chat.completions.create({
         model: options.model ?? defaultChatModel(),
         messages,
         temperature: options.temperature ?? 0.2,
@@ -39,7 +41,7 @@ export class OpenAiProvider implements AiProvider {
 
   async *streamChatCompletion(messages: ChatMessage[], options: AiRequestOptions = {}) {
     try {
-      const stream = await this.client.chat.completions.create({
+      const stream = await this.getClient().chat.completions.create({
         model: options.model ?? defaultChatModel(),
         messages,
         temperature: options.temperature ?? 0.2,
@@ -63,7 +65,7 @@ export class OpenAiProvider implements AiProvider {
   async createEmbedding(input: string, options: AiEmbeddingOptions = {}): Promise<EmbeddingResult> {
     try {
       const model = options.model ?? defaultEmbeddingModel();
-      const response = await this.client.embeddings.create({
+      const response = await this.getClient().embeddings.create({
         model,
         input
       });
@@ -80,15 +82,15 @@ export class OpenAiProvider implements AiProvider {
 }
 
 export function defaultChatModel() {
-  return process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+  return readEnv("OPENAI_CHAT_MODEL") ?? "gpt-4o-mini";
 }
 
 export function defaultEmbeddingModel() {
-  return process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+  return readEnv("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
 }
 
 export function defaultEmbeddingDimensions() {
-  return Number(process.env.OPENAI_EMBEDDING_DIMENSIONS ?? 1536);
+  return readIntEnv("OPENAI_EMBEDDING_DIMENSIONS", 1536);
 }
 
 function normalizeUsage(usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null) {
@@ -102,6 +104,9 @@ function normalizeUsage(usage?: { prompt_tokens?: number; completion_tokens?: nu
 
 function normalizeOpenAiError(error: unknown) {
   if (error instanceof Error) {
+    if (error.message.includes("OPENAI_API_KEY")) {
+      return new AiProviderError(error.message, "MISSING_OPENAI_API_KEY", "AI provider is not configured.");
+    }
     return new AiProviderError(error.message, "OPENAI_ERROR", "AI provider request failed.");
   }
   return new AiProviderError("Unknown OpenAI error", "OPENAI_ERROR", "AI provider request failed.");

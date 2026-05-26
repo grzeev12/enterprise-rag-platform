@@ -1,16 +1,13 @@
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
+import { readEnv, requireEnv } from "@/lib/env";
 
 let containerClient: ContainerClient | null = null;
 
 export function getBlobContainerClient() {
   if (containerClient) return containerClient;
 
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME ?? "enterprise-ai-saas";
-
-  if (!connectionString) {
-    throw new Error("AZURE_STORAGE_CONNECTION_STRING is required for blob storage");
-  }
+  const connectionString = requireEnv("AZURE_STORAGE_CONNECTION_STRING", "blob storage");
+  const containerName = readEnv("AZURE_STORAGE_CONTAINER_NAME") ?? "enterprise-ai-saas";
 
   containerClient = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(
     containerName

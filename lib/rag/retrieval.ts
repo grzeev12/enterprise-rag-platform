@@ -1,6 +1,7 @@
 import { getAiProvider } from "@/lib/ai/gateway";
 import { defaultEmbeddingModel } from "@/lib/ai/openai-provider";
 import { recordTokenUsage } from "@/lib/ai/usage";
+import { readIntEnv, readNumberEnv } from "@/lib/env";
 import { logInfo } from "@/lib/observability/logger";
 import { keywordFallback, retrieveSimilarChunks } from "@/lib/rag/vector-store";
 
@@ -29,9 +30,9 @@ export async function retrieveWorkspaceContext(input: {
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
     queryEmbedding: embedding.embedding,
-    limit: Number(process.env.RAG_TOP_K ?? 8),
-    scoreThreshold: Number(process.env.RAG_SCORE_THRESHOLD ?? 0.25),
-    maxContextChars: Number(process.env.RAG_MAX_CONTEXT_CHARS ?? 12000)
+    limit: readIntEnv("RAG_TOP_K", 8),
+    scoreThreshold: readNumberEnv("RAG_SCORE_THRESHOLD", 0.25),
+    maxContextChars: readIntEnv("RAG_MAX_CONTEXT_CHARS", 12000)
   });
 
   const finalChunks = chunks.length

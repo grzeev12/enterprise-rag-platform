@@ -1,7 +1,8 @@
 import { PrismaClient, RoleScope } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { readEnv, readIntEnv } from "../lib/env";
 
-const prisma = new PrismaClient();
+let prisma: PrismaClient;
 
 const permissions = [
   ["organization:read", "View organization details"],
@@ -24,6 +25,8 @@ const permissions = [
 ] as const;
 
 async function main() {
+  prisma = new PrismaClient();
+
   await prisma.permission.createMany({
     data: permissions.map(([key, description]) => ({ key, description })),
     skipDuplicates: true
@@ -51,7 +54,7 @@ async function main() {
         key: "openai-chat-default",
         displayName: "OpenAI Chat Default",
         kind: "chat",
-        modelName: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
+        modelName: readEnv("OPENAI_CHAT_MODEL") ?? "gpt-4o-mini",
         maxOutputTokens: 800,
         isDefault: true
       }
@@ -68,8 +71,8 @@ async function main() {
         key: "openai-embedding-default",
         displayName: "OpenAI Embedding Default",
         kind: "embedding",
-        modelName: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
-        dimensions: Number(process.env.OPENAI_EMBEDDING_DIMENSIONS ?? 1536),
+        modelName: readEnv("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small",
+        dimensions: readIntEnv("OPENAI_EMBEDDING_DIMENSIONS", 1536),
         isDefault: true
       }
     });
@@ -219,10 +222,10 @@ async function main() {
 
 main()
   .then(async () => {
-    await prisma.$disconnect();
+    await prisma?.$disconnect();
   })
   .catch(async (error) => {
     console.error(error);
-    await prisma.$disconnect();
+    await prisma?.$disconnect();
     process.exit(1);
   });
