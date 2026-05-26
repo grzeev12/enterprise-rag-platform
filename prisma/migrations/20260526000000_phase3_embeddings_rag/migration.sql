@@ -200,6 +200,22 @@ ALTER TABLE "ChunkEmbedding"
   ALTER COLUMN "vector" TYPE vector(1536)
   USING "vector"::vector(1536);
 
+DO $$
+DECLARE
+  vector_type TEXT;
+BEGIN
+  SELECT format_type(atttypid, atttypmod)
+  INTO vector_type
+  FROM pg_attribute
+  WHERE attrelid = '"ChunkEmbedding"'::regclass
+    AND attname = 'vector'
+    AND NOT attisdropped;
+
+  IF vector_type <> 'vector(1536)' THEN
+    RAISE EXCEPTION 'ChunkEmbedding.vector must be vector(1536) before creating the HNSW index; current type is %', vector_type;
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "ChunkEmbedding_documentChunkId_key" ON "ChunkEmbedding"("documentChunkId");
 CREATE INDEX IF NOT EXISTS "ChunkEmbedding_organizationId_workspaceId_idx" ON "ChunkEmbedding"("organizationId", "workspaceId");
 CREATE INDEX IF NOT EXISTS "ChunkEmbedding_model_idx" ON "ChunkEmbedding"("model");
