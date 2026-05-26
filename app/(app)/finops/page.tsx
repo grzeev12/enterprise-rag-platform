@@ -8,7 +8,17 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getAdminScopes, resolveAdminScope } from "@/lib/admin";
 import { requireCurrentUser } from "@/lib/current-user";
-import { estimateUsageCostUsd, formatUsd, getFinopsOverview, parseDateRange } from "@/lib/finops";
+import {
+  estimateUsageCostUsd,
+  formatUsd,
+  getFinopsOverview,
+  parseDateRange,
+  type FinopsAiRequestRow,
+  type FinopsBudgetStatus,
+  type FinopsBreakdownRow,
+  type FinopsOverview,
+  type FinopsUsageEvent
+} from "@/lib/finops";
 import { prisma } from "@/lib/db";
 
 type FinopsPageProps = {
@@ -39,7 +49,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
   }
 
   const filters = parseDateRange(params);
-  const overview = await getFinopsOverview(scope, filters);
+  const overview: FinopsOverview = await getFinopsOverview(scope, filters);
   const [workspaces, users, models] = await Promise.all([
     prisma.workspace.findMany({
       where: scope.workspaceId
@@ -75,6 +85,9 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
     ...(params.userId ? { userId: params.userId } : {}),
     ...(params.model ? { model: params.model } : {})
   });
+  type WorkspaceOption = (typeof workspaces)[number];
+  type MembershipOption = (typeof users)[number];
+  type ModelOption = (typeof models)[number];
 
   return (
     <div className="space-y-6">
@@ -111,7 +124,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
               <Label htmlFor="workspaceId">Workspace</Label>
               <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" id="workspaceId" name="workspaceId" defaultValue={filters.workspaceId ?? scope.workspaceId ?? ""}>
                 <option value="">All</option>
-                {workspaces.map((workspace) => (
+                {workspaces.map((workspace: WorkspaceOption) => (
                   <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
                 ))}
               </select>
@@ -120,7 +133,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
               <Label htmlFor="userId">User</Label>
               <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" id="userId" name="userId" defaultValue={filters.userId ?? ""}>
                 <option value="">All</option>
-                {users.map((membership) => (
+                {users.map((membership: MembershipOption) => (
                   <option key={membership.id} value={membership.userId}>{membership.user.email}</option>
                 ))}
               </select>
@@ -129,7 +142,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
               <Label htmlFor="model">Model</Label>
               <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" id="model" name="model" defaultValue={filters.model ?? ""}>
                 <option value="">All</option>
-                {models.map((model) => (
+                {models.map((model: ModelOption) => (
                   <option key={model.model} value={model.model}>{model.model}</option>
                 ))}
               </select>
@@ -172,7 +185,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {overview.trends.map((day) => (
+            {overview.trends.map((day: FinopsBreakdownRow) => (
               <div className="grid gap-2 md:grid-cols-[120px_1fr_120px] md:items-center" key={day.key}>
                 <p className="text-sm font-medium">{day.key}</p>
                 <div className="h-2 rounded bg-muted">
@@ -204,7 +217,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {overview.budgets.map((budget) => (
+              {overview.budgets.map((budget: FinopsBudgetStatus) => (
                 <TableRow key={budget.id}>
                   <TableCell className="font-medium">{budget.name}</TableCell>
                   <TableCell>{budget.workspaceName}</TableCell>
@@ -240,7 +253,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {overview.usageEvents.slice(0, 20).map((event) => (
+                {overview.usageEvents.slice(0, 20).map((event: FinopsUsageEvent) => (
                   <TableRow key={event.id}>
                     <TableCell>{formatDate(event.createdAt)}</TableCell>
                     <TableCell>{event.workspace.name}</TableCell>
@@ -271,7 +284,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {overview.aiRequests.slice(0, 20).map((request) => (
+                {overview.aiRequests.slice(0, 20).map((request: FinopsAiRequestRow) => (
                   <TableRow key={request.id}>
                     <TableCell>
                       <p className="font-medium">{request.type.toLowerCase().replaceAll("_", " ")}</p>
@@ -296,7 +309,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">
-            {overview.recommendations.map((recommendation) => (
+            {overview.recommendations.map((recommendation: string) => (
               <li key={recommendation}>{recommendation}</li>
             ))}
           </ul>
@@ -335,7 +348,7 @@ function BreakdownCard({ title, rows }: { title: string; rows: { key: string; re
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: FinopsBreakdownRow) => (
               <TableRow key={row.key}>
                 <TableCell className="font-medium">{row.key}</TableCell>
                 <TableCell>{row.requests.toLocaleString()}</TableCell>

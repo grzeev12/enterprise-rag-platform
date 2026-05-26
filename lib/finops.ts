@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { AiRequestStatus, AiRequestType, BudgetPeriod, Prisma } from "@prisma/client";
 import { adminTenantWhere, type AdminScope } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 
@@ -10,7 +10,76 @@ export type FinopsFilters = {
   model?: string;
 };
 
-type UsageEvent = Awaited<ReturnType<typeof getUsageEvents>>[number];
+export type FinopsUsageEvent = Prisma.TokenUsageGetPayload<{
+  include: {
+    workspace: true;
+    aiRequest: {
+      include: {
+        provider: true;
+        user: true;
+        chat: true;
+      };
+    };
+  };
+}>;
+
+export type FinopsBreakdownRow = {
+  key: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+};
+
+export type FinopsSummary = {
+  requestCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  embeddingTokens: number;
+  embeddingCostUsd: number;
+};
+
+export type FinopsBudgetStatus = {
+  id: string;
+  name: string;
+  workspaceName: string;
+  period: BudgetPeriod;
+  amountUsd: number;
+  thresholdPercent: number;
+  spentUsd: number;
+  percentUsed: number;
+  alertCount: number;
+};
+
+export type FinopsAiRequestRow = {
+  id: string;
+  type: AiRequestType;
+  status: AiRequestStatus;
+  model: string;
+  totalTokens: number | null;
+  createdAt: Date;
+  userEmail: string | null;
+  workspaceName: string;
+  providerKey: string | null;
+  chatTitle: string | null;
+};
+
+export type FinopsOverview = {
+  summary: FinopsSummary;
+  breakdown: {
+    byWorkspace: FinopsBreakdownRow[];
+    byUser: FinopsBreakdownRow[];
+    byModel: FinopsBreakdownRow[];
+    byProvider: FinopsBreakdownRow[];
+    byChat: FinopsBreakdownRow[];
+  };
+  trends: FinopsBreakdownRow[];
+  usageEvents: FinopsUsageEvent[];
+  aiRequests: FinopsAiRequestRow[];
+  budgets: FinopsBudgetStatus[];
+  recommendations: string[];
+};
 
 const defaultPricingPerMillion: Record<string, { provider: string; prompt: number; completion: number }> = {
   "gpt-4o-mini": { provider: "openai", prompt: 0.15, completion: 0.6 },
@@ -41,7 +110,10 @@ export function parseDateRange(searchParams: URLSearchParams | Record<string, st
   };
 }
 
-export async function getFinopsOverview(scope: AdminScope, filters: FinopsFilters = {}) {
+export async function getFinopsOverview(
+  scope: AdminScope,
+  filters: FinopsFilters = {}
+): Promise<FinopsOverview> {
   const [events, budgets, aiRequests] = await Promise.all([
     getUsageEvents(scope, filters),
     prisma.budget.findMany({
@@ -89,24 +161,27 @@ export async function getFinopsOverview(scope: AdminScope, filters: FinopsFilter
     breakdown,
     trends: buildDailyTrends(events),
     usageEvents: events.slice(0, 100),
-      aiRequests: aiRequests.map((request) => ({
-        id: request.id,
-        type: request.type,
-        status: request.status,
-        model: request.model,
-        totalTokens: request.totalTokens,
-        createdAt: request.createdAt,
-        userEmail: request.user?.email ?? null,
-        workspaceName: request.workspace.name,
-        providerKey: request.provider?.key ?? null,
-        chatTitle: request.chat?.title ?? null
-      })),
+    aiRequests: aiRequests.map((request) => ({
+      id: request.id,
+      type: request.type,
+      status: request.status,
+      model: request.model,
+      totalTokens: request.totalTokens,
+      createdAt: request.createdAt,
+      userEmail: request.user?.email ?? null,
+      workspaceName: request.workspace.name,
+      providerKey: request.provider?.key ?? null,
+      chatTitle: request.chat?.title ?? null
+    })),
     budgets: budgetStatus,
     recommendations: buildRecommendations(summary, breakdown)
   };
 }
 
-export async function getUsageEvents(scope: AdminScope, filters: FinopsFilters = {}) {
+export async function getUsageEvents(
+  scope: AdminScope,
+  filters: FinopsFilters = {}
+): Promise<FinopsUsageEvent[]> {
   return prisma.tokenUsage.findMany({
     where: {
       ...tenantWhere(scope, filters),
@@ -144,11 +219,11 @@ export function estimateUsageCostUsd(event: {
   return ((event.promptTokens * pricing.prompt) + (event.completionTokens * pricing.completion)) / 1_000_000;
 }
 
-export function providerForEvent(event: UsageEvent) {
+export function providerForEvent(event: FinopsUsageEvent) {
   return event.aiRequest?.provider?.key ?? defaultPricingPerMillion[event.model]?.provider ?? "openai";
 }
 
-function summarizeEvents(events: UsageEvent[]) {
+function summarizeEvents(events: FinopsUsageEvent[]): FinopsSummary {
   const promptTokens = events.reduce((sum, event) => sum + event.promptTokens, 0);
   const completionTokens = events.reduce((sum, event) => sum + event.completionTokens, 0);
   const totalTokens = events.reduce((sum, event) => sum + event.totalTokens, 0);
@@ -169,7 +244,7 @@ function summarizeEvents(events: UsageEvent[]) {
   };
 }
 
-function buildBreakdowns(events: UsageEvent[]) {
+function buildBreakdowns(events: FinopsUsageEvent[]): FinopsOverview["breakdown"] {
   return {
     byWorkspace: aggregate(events, (event) => event.workspace.name),
     byUser: aggregate(events, (event) => event.aiRequest?.user?.email ?? event.userId ?? "System"),
@@ -179,14 +254,17 @@ function buildBreakdowns(events: UsageEvent[]) {
   };
 }
 
-function buildDailyTrends(events: UsageEvent[]) {
+function buildDailyTrends(events: FinopsUsageEvent[]): FinopsBreakdownRow[] {
   return aggregate(events, (event) => event.createdAt.toISOString().slice(0, 10)).sort((a, b) =>
     a.key.localeCompare(b.key)
   );
 }
 
-function aggregate(events: UsageEvent[], keyForEvent: (event: UsageEvent) => string) {
-  const rows = new Map<string, { key: string; requests: number; tokens: number; costUsd: number }>();
+function aggregate(
+  events: FinopsUsageEvent[],
+  keyForEvent: (event: FinopsUsageEvent) => string
+): FinopsBreakdownRow[] {
+  const rows = new Map<string, FinopsBreakdownRow>();
   for (const event of events) {
     const key = keyForEvent(event);
     const current = rows.get(key) ?? { key, requests: 0, tokens: 0, costUsd: 0 };
