@@ -27,78 +27,85 @@ const connection = {
   maxRetriesPerRequest: null
 };
 
-const queue = new Queue<VerificationJob>(queueName, {
-  connection,
-  defaultJobOptions: {
-    attempts: 1,
-    removeOnComplete: true,
-    removeOnFail: false
-  }
-});
-const events = new QueueEvents(queueName, { connection });
-const worker = new Worker<VerificationJob>(
-  queueName,
-  async (job) => {
-    if (job.data.check !== "production-redis-queue") {
-      throw new Error("Unexpected verification job payload.");
-    }
-    return {
-      processed: true,
-      jobId: job.id
-    };
-  },
-  {
-    connection,
-    concurrency: 1
-  }
-);
-
-try {
-  console.log(`Redis provider detected: ${provider}`);
-  console.log("Connecting to Redis without printing connection details...");
-
-  const client = (await queue.client) as unknown as { ping: () => Promise<string> };
-  await client.ping();
-  console.log("Redis connection verified.");
-
-  await events.waitUntilReady();
-  await worker.waitUntilReady();
-  console.log("BullMQ queue and worker are ready.");
-
-  const job = await queue.add("verification", {
-    check: "production-redis-queue",
-    createdAt: new Date().toISOString()
-  });
-  console.log("Test job enqueued.");
-
-  const result = await job.waitUntilFinished(events, 30_000);
-  if (!result || result.processed !== true) {
-    throw new Error("Verification job completed with an unexpected result.");
-  }
-  console.log("Test job processed successfully.");
-
-  const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed");
-  console.log(
-    JSON.stringify({
-      queueVerified: true,
-      waiting: counts.waiting,
-      active: counts.active,
-      completed: counts.completed,
-      failed: counts.failed,
-      delayed: counts.delayed
-    })
-  );
-} catch (error) {
-  const message = sanitizeError(error);
-  console.error(`Redis queue verification failed: ${message}`);
-  if (provider === "upstash") {
-    console.error(
-      "Recommended fix: use an Upstash Redis TCP/TLS endpoint with a rediss:// REDIS_URL, or switch queues to Azure Cache for Redis / another BullMQ-compatible Redis provider. Upstash REST and QStash URLs are not BullMQ backends."
-    );
-  }
+main().catch((error) => {
+  console.error(`Redis queue verification failed: ${sanitizeError(error)}`);
   process.exitCode = 1;
-} finally {
-  await Promise.allSettled([worker.close(), events.close(), queue.obliterate({ force: true }), queue.close()]);
+});
+
+async function main() {
+  const queue = new Queue<VerificationJob>(queueName, {
+    connection,
+    defaultJobOptions: {
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: false
+    }
+  });
+  const events = new QueueEvents(queueName, { connection });
+  const worker = new Worker<VerificationJob>(
+    queueName,
+    async (job) => {
+      if (job.data.check !== "production-redis-queue") {
+        throw new Error("Unexpected verification job payload.");
+      }
+      return {
+        processed: true,
+        jobId: job.id
+      };
+    },
+    {
+      connection,
+      concurrency: 1
+    }
+  );
+
+  try {
+    console.log(`Redis provider detected: ${provider}`);
+    console.log("Connecting to Redis without printing connection details...");
+
+    const client = (await queue.client) as unknown as { ping: () => Promise<string> };
+    await client.ping();
+    console.log("Redis connection verified.");
+
+    await events.waitUntilReady();
+    await worker.waitUntilReady();
+    console.log("BullMQ queue and worker are ready.");
+
+    const job = await queue.add("verification", {
+      check: "production-redis-queue",
+      createdAt: new Date().toISOString()
+    });
+    console.log("Test job enqueued.");
+
+    const result = await job.waitUntilFinished(events, 30_000);
+    if (!isVerificationResult(result)) {
+      throw new Error("Verification job completed with an unexpected result.");
+    }
+    console.log("Test job processed successfully.");
+
+    const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed");
+    console.log(
+      JSON.stringify({
+        queueVerified: true,
+        waiting: counts.waiting,
+        active: counts.active,
+        completed: counts.completed,
+        failed: counts.failed,
+        delayed: counts.delayed
+      })
+    );
+  } catch (error) {
+    const message = sanitizeError(error);
+    console.error(`Redis queue verification failed: ${message}`);
+    if (provider === "upstash") {
+      console.error(
+        "Recommended fix: use an Upstash Redis TCP/TLS endpoint with a rediss:// REDIS_URL, or switch queues to Azure Cache for Redis / another BullMQ-compatible Redis provider. Upstash REST and QStash URLs are not BullMQ backends."
+      );
+    }
+    process.exitCode = 1;
+  } finally {
+    await Promise.allSettled([worker.close(), events.close(), queue.obliterate({ force: true }), queue.close()]);
+  }
 }
 
 function detectProvider(hostname: string) {
@@ -115,9 +122,17 @@ function sanitizeError(error: unknown) {
   if (redisUrl) {
     sanitized = sanitized.replaceAll(redisUrl, "[REDACTED_REDIS_URL]");
   }
-  sanitized = sanitized.replaceAll(parsedUrl.password, "[REDACTED_PASSWORD]");
-  sanitized = sanitized.replaceAll(parsedUrl.username, "[REDACTED_USERNAME]");
+  if (parsedUrl.password) {
+    sanitized = sanitized.replaceAll(parsedUrl.password, "[REDACTED_PASSWORD]");
+  }
+  if (parsedUrl.username) {
+    sanitized = sanitized.replaceAll(parsedUrl.username, "[REDACTED_USERNAME]");
+  }
   return sanitized;
+}
+
+function isVerificationResult(result: unknown): result is { processed: true; jobId: string | undefined } {
+  return Boolean(result && typeof result === "object" && "processed" in result && result.processed === true);
 }
 
 function fail(message: string): never {
