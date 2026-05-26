@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import crypto from "node:crypto";
+import { DEFAULT_EMBEDDING_DIMENSIONS, PGVECTOR_EMBEDDING_TYPE } from "@/lib/ai/embedding-config";
 import { prisma } from "@/lib/db";
 import { defaultEmbeddingDimensions } from "@/lib/ai/openai-provider";
 
@@ -29,6 +30,9 @@ export async function upsertChunkEmbedding(input: {
 }) {
   const vectorLiteral = toVectorLiteral(input.vector);
   const dimensions = input.vector.length || defaultEmbeddingDimensions();
+  if (dimensions !== DEFAULT_EMBEDDING_DIMENSIONS) {
+    throw new Error(`Embedding vector dimensions must match ${PGVECTOR_EMBEDDING_TYPE}`);
+  }
 
   await prisma.$executeRaw`
     INSERT INTO "ChunkEmbedding" (
@@ -50,7 +54,7 @@ export async function upsertChunkEmbedding(input: {
       ${input.documentChunkId},
       ${input.model},
       ${dimensions},
-      ${vectorLiteral}::vector,
+      ${vectorLiteral}::vector(1536),
       ${JSON.stringify(input.vector)}::jsonb,
       now(),
       now()
@@ -85,6 +89,9 @@ export async function retrieveSimilarChunks(input: {
   const scoreThreshold = input.scoreThreshold ?? 0.25;
   const maxContextChars = input.maxContextChars ?? 12000;
   const vectorLiteral = toVectorLiteral(input.queryEmbedding);
+  if (input.queryEmbedding.length !== DEFAULT_EMBEDDING_DIMENSIONS) {
+    throw new Error(`Query embedding dimensions must match ${PGVECTOR_EMBEDDING_TYPE}`);
+  }
 
   const rows = await prisma.$queryRaw<RetrievedChunk[]>`
     SELECT
@@ -94,7 +101,7 @@ export async function retrieveSimilarChunks(input: {
       d."title" AS "title",
       d."sourceUrl" AS "sourceUrl",
       dc."chunkIndex" AS "chunkIndex",
-      (1 - (ce."vector" <=> ${vectorLiteral}::vector))::float AS "score"
+      (1 - (ce."vector" <=> ${vectorLiteral}::vector(1536)))::float AS "score"
     FROM "ChunkEmbedding" ce
     INNER JOIN "DocumentChunk" dc ON dc."id" = ce."documentChunkId"
     INNER JOIN "Document" d ON d."id" = dc."documentId"
@@ -105,8 +112,8 @@ export async function retrieveSimilarChunks(input: {
       AND dc."workspaceId" = ${input.workspaceId}
       AND d."deletedAt" IS NULL
       AND ce."vector" IS NOT NULL
-      AND (1 - (ce."vector" <=> ${vectorLiteral}::vector)) >= ${scoreThreshold}
-    ORDER BY ce."vector" <=> ${vectorLiteral}::vector
+      AND (1 - (ce."vector" <=> ${vectorLiteral}::vector(1536))) >= ${scoreThreshold}
+    ORDER BY ce."vector" <=> ${vectorLiteral}::vector(1536)
     LIMIT ${limit}
   `;
 

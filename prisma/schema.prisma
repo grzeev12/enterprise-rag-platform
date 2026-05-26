@@ -642,7 +642,7 @@ model ChunkEmbedding {
   documentChunkId String                 @unique
   model           String
   dimensions      Int
-  vector          Unsupported("vector")?
+  vector          Unsupported("vector(1536)")?
   vectorJson      Json?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ChatMessage, AiProvider, AiRequestOptions, AiEmbeddingOptions, EmbeddingResult } from "@/lib/ai/types";
 import { AiProviderError } from "@/lib/ai/types";
+import { DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL } from "@/lib/ai/embedding-config";
 import { readEnv, readIntEnv, requireEnv } from "@/lib/env";
 
 export class OpenAiProvider implements AiProvider {
@@ -111,11 +112,11 @@ export function defaultChatModel() {
 }
 
 export function defaultEmbeddingModel() {
-  return readEnv("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+  return readEnv("OPENAI_EMBEDDING_MODEL") ?? DEFAULT_EMBEDDING_MODEL;
 }
 
 export function defaultEmbeddingDimensions() {
-  return readIntEnv("OPENAI_EMBEDDING_DIMENSIONS", 1536);
+  return readIntEnv("OPENAI_EMBEDDING_DIMENSIONS", DEFAULT_EMBEDDING_DIMENSIONS);
 }
 
 function normalizeUsage(usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null) {

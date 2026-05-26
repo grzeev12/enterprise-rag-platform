@@ -50,21 +50,21 @@ ALTER TABLE "DocumentChunk"
   ADD COLUMN IF NOT EXISTS "embeddingModel" TEXT,
   ADD COLUMN IF NOT EXISTS "embeddedAt" TIMESTAMP(3);
 
-CREATE TABLE "ChunkEmbedding" (
+CREATE TABLE IF NOT EXISTS "ChunkEmbedding" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
   "documentChunkId" TEXT NOT NULL,
   "model" TEXT NOT NULL,
   "dimensions" INTEGER NOT NULL,
-  "vector" vector,
+  "vector" vector(1536),
   "vectorJson" JSONB,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "ChunkEmbedding_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "EmbeddingJob" (
+CREATE TABLE IF NOT EXISTS "EmbeddingJob" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE "EmbeddingJob" (
   CONSTRAINT "EmbeddingJob_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "LlmProvider" (
+CREATE TABLE IF NOT EXISTS "LlmProvider" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT,
   "key" TEXT NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE "LlmProvider" (
   CONSTRAINT "LlmProvider_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "ModelConfig" (
+CREATE TABLE IF NOT EXISTS "ModelConfig" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT,
   "workspaceId" TEXT,
@@ -117,7 +117,7 @@ CREATE TABLE "ModelConfig" (
   CONSTRAINT "ModelConfig_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "AiRequest" (
+CREATE TABLE IF NOT EXISTS "AiRequest" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE "AiRequest" (
   CONSTRAINT "AiRequest_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "TokenUsage" (
+CREATE TABLE IF NOT EXISTS "TokenUsage" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -155,7 +155,7 @@ CREATE TABLE "TokenUsage" (
   CONSTRAINT "TokenUsage_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "Chat" (
+CREATE TABLE IF NOT EXISTS "Chat" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -168,7 +168,7 @@ CREATE TABLE "Chat" (
   CONSTRAINT "Chat_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "Message" (
+CREATE TABLE IF NOT EXISTS "Message" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -182,7 +182,7 @@ CREATE TABLE "Message" (
   CONSTRAINT "Message_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "MessageCitation" (
+CREATE TABLE IF NOT EXISTS "MessageCitation" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
@@ -196,31 +196,35 @@ CREATE TABLE "MessageCitation" (
   CONSTRAINT "MessageCitation_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "ChunkEmbedding_documentChunkId_key" ON "ChunkEmbedding"("documentChunkId");
-CREATE INDEX "ChunkEmbedding_organizationId_workspaceId_idx" ON "ChunkEmbedding"("organizationId", "workspaceId");
-CREATE INDEX "ChunkEmbedding_model_idx" ON "ChunkEmbedding"("model");
-CREATE INDEX "ChunkEmbedding_vector_hnsw_idx" ON "ChunkEmbedding" USING hnsw ("vector" vector_cosine_ops);
-CREATE INDEX "DocumentChunk_organizationId_workspaceId_embeddedAt_idx" ON "DocumentChunk"("organizationId", "workspaceId", "embeddedAt");
-CREATE INDEX "EmbeddingJob_organizationId_workspaceId_status_idx" ON "EmbeddingJob"("organizationId", "workspaceId", "status");
-CREATE INDEX "EmbeddingJob_knowledgeSourceId_createdAt_idx" ON "EmbeddingJob"("knowledgeSourceId", "createdAt");
-CREATE INDEX "EmbeddingJob_documentId_idx" ON "EmbeddingJob"("documentId");
-CREATE UNIQUE INDEX "LlmProvider_organizationId_key_key" ON "LlmProvider"("organizationId", "key");
-CREATE INDEX "LlmProvider_organizationId_isEnabled_idx" ON "LlmProvider"("organizationId", "isEnabled");
-CREATE UNIQUE INDEX "ModelConfig_organizationId_workspaceId_key_key" ON "ModelConfig"("organizationId", "workspaceId", "key");
-CREATE INDEX "ModelConfig_providerId_kind_isEnabled_idx" ON "ModelConfig"("providerId", "kind", "isEnabled");
-CREATE INDEX "AiRequest_organizationId_workspaceId_createdAt_idx" ON "AiRequest"("organizationId", "workspaceId", "createdAt");
-CREATE INDEX "AiRequest_userId_createdAt_idx" ON "AiRequest"("userId", "createdAt");
-CREATE INDEX "AiRequest_type_status_idx" ON "AiRequest"("type", "status");
-CREATE INDEX "AiRequest_chatId_idx" ON "AiRequest"("chatId");
-CREATE INDEX "TokenUsage_organizationId_workspaceId_createdAt_idx" ON "TokenUsage"("organizationId", "workspaceId", "createdAt");
-CREATE INDEX "TokenUsage_userId_createdAt_idx" ON "TokenUsage"("userId", "createdAt");
-CREATE INDEX "TokenUsage_model_createdAt_idx" ON "TokenUsage"("model", "createdAt");
-CREATE INDEX "Chat_organizationId_workspaceId_userId_status_idx" ON "Chat"("organizationId", "workspaceId", "userId", "status");
-CREATE INDEX "Chat_updatedAt_idx" ON "Chat"("updatedAt");
-CREATE INDEX "Message_organizationId_workspaceId_chatId_createdAt_idx" ON "Message"("organizationId", "workspaceId", "chatId", "createdAt");
-CREATE INDEX "Message_userId_createdAt_idx" ON "Message"("userId", "createdAt");
-CREATE INDEX "MessageCitation_organizationId_workspaceId_messageId_idx" ON "MessageCitation"("organizationId", "workspaceId", "messageId");
-CREATE INDEX "MessageCitation_documentChunkId_idx" ON "MessageCitation"("documentChunkId");
+ALTER TABLE "ChunkEmbedding"
+  ALTER COLUMN "vector" TYPE vector(1536)
+  USING "vector"::vector(1536);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ChunkEmbedding_documentChunkId_key" ON "ChunkEmbedding"("documentChunkId");
+CREATE INDEX IF NOT EXISTS "ChunkEmbedding_organizationId_workspaceId_idx" ON "ChunkEmbedding"("organizationId", "workspaceId");
+CREATE INDEX IF NOT EXISTS "ChunkEmbedding_model_idx" ON "ChunkEmbedding"("model");
+CREATE INDEX IF NOT EXISTS "ChunkEmbedding_vector_hnsw_idx" ON "ChunkEmbedding" USING hnsw ("vector" vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS "DocumentChunk_organizationId_workspaceId_embeddedAt_idx" ON "DocumentChunk"("organizationId", "workspaceId", "embeddedAt");
+CREATE INDEX IF NOT EXISTS "EmbeddingJob_organizationId_workspaceId_status_idx" ON "EmbeddingJob"("organizationId", "workspaceId", "status");
+CREATE INDEX IF NOT EXISTS "EmbeddingJob_knowledgeSourceId_createdAt_idx" ON "EmbeddingJob"("knowledgeSourceId", "createdAt");
+CREATE INDEX IF NOT EXISTS "EmbeddingJob_documentId_idx" ON "EmbeddingJob"("documentId");
+CREATE UNIQUE INDEX IF NOT EXISTS "LlmProvider_organizationId_key_key" ON "LlmProvider"("organizationId", "key");
+CREATE INDEX IF NOT EXISTS "LlmProvider_organizationId_isEnabled_idx" ON "LlmProvider"("organizationId", "isEnabled");
+CREATE UNIQUE INDEX IF NOT EXISTS "ModelConfig_organizationId_workspaceId_key_key" ON "ModelConfig"("organizationId", "workspaceId", "key");
+CREATE INDEX IF NOT EXISTS "ModelConfig_providerId_kind_isEnabled_idx" ON "ModelConfig"("providerId", "kind", "isEnabled");
+CREATE INDEX IF NOT EXISTS "AiRequest_organizationId_workspaceId_createdAt_idx" ON "AiRequest"("organizationId", "workspaceId", "createdAt");
+CREATE INDEX IF NOT EXISTS "AiRequest_userId_createdAt_idx" ON "AiRequest"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "AiRequest_type_status_idx" ON "AiRequest"("type", "status");
+CREATE INDEX IF NOT EXISTS "AiRequest_chatId_idx" ON "AiRequest"("chatId");
+CREATE INDEX IF NOT EXISTS "TokenUsage_organizationId_workspaceId_createdAt_idx" ON "TokenUsage"("organizationId", "workspaceId", "createdAt");
+CREATE INDEX IF NOT EXISTS "TokenUsage_userId_createdAt_idx" ON "TokenUsage"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "TokenUsage_model_createdAt_idx" ON "TokenUsage"("model", "createdAt");
+CREATE INDEX IF NOT EXISTS "Chat_organizationId_workspaceId_userId_status_idx" ON "Chat"("organizationId", "workspaceId", "userId", "status");
+CREATE INDEX IF NOT EXISTS "Chat_updatedAt_idx" ON "Chat"("updatedAt");
+CREATE INDEX IF NOT EXISTS "Message_organizationId_workspaceId_chatId_createdAt_idx" ON "Message"("organizationId", "workspaceId", "chatId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Message_userId_createdAt_idx" ON "Message"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "MessageCitation_organizationId_workspaceId_messageId_idx" ON "MessageCitation"("organizationId", "workspaceId", "messageId");
+CREATE INDEX IF NOT EXISTS "MessageCitation_documentChunkId_idx" ON "MessageCitation"("documentChunkId");
 
 ALTER TABLE "ChunkEmbedding" ADD CONSTRAINT "ChunkEmbedding_documentChunkId_fkey" FOREIGN KEY ("documentChunkId") REFERENCES "DocumentChunk"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "EmbeddingJob" ADD CONSTRAINT "EmbeddingJob_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;

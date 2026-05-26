@@ -324,7 +324,7 @@ AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas"
 
 ## pgvector and RAG
 
-Phase 3 adds `ChunkEmbedding.vector` as a pgvector column and creates an HNSW cosine index in `prisma/migrations/20260526000000_phase3_embeddings_rag/migration.sql`.
+Phase 3 adds `ChunkEmbedding.vector` as a dimensioned `vector(1536)` pgvector column and creates an HNSW cosine index in `prisma/migrations/20260526000000_phase3_embeddings_rag/migration.sql`.
 
 Local, Neon, and Azure PostgreSQL all need:
 
@@ -338,11 +338,19 @@ Similarity search uses cosine distance:
 ORDER BY "vector" <=> $queryVector
 ```
 
+The default embedding model is OpenAI `text-embedding-3-small`, which produces 1536-dimensional vectors. Keep this env value aligned with the database column and index:
+
+```bash
+OPENAI_EMBEDDING_DIMENSIONS="1536"
+```
+
 The application filters every retrieval query by both `organizationId` and `workspaceId`.
 
 ## Failed Neon Migration Recovery
 
-If Neon recorded `20260526000000_phase3_embeddings_rag` as failed with `ERROR: type "AuditAction" does not exist`, the database started from a migration history that was missing the Phase 1/2 baseline. Do not reset or drop the production database.
+If Neon recorded `20260526000000_phase3_embeddings_rag` as failed with `ERROR: type "AuditAction" does not exist` or `ERROR: column does not have dimensions`, do not reset or drop the production database.
+
+The `AuditAction` error means the database started from a migration history that was missing the Phase 1/2 baseline. The dimension error means the embedding column was created as bare `vector` before the HNSW index was created; the migration now uses `vector(1536)`.
 
 Use the dedicated recovery workflow only when all of these are true:
 

@@ -213,6 +213,7 @@ AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas"
 OPENAI_API_KEY=""
 OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+# Must match the pgvector column type: vector(1536).
 OPENAI_EMBEDDING_DIMENSIONS="1536"
 RAG_TOP_K="8"
 RAG_SCORE_THRESHOLD="0.25"
@@ -255,6 +256,14 @@ For Neon production, use the pooled connection string in Vercel and the direct c
 ```sql
 SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 ```
+
+The current embedding index is fixed to OpenAI `text-embedding-3-small` dimensions:
+
+```bash
+OPENAI_EMBEDDING_DIMENSIONS="1536"
+```
+
+The `ChunkEmbedding.vector` column is `vector(1536)`, and the HNSW cosine index depends on that explicit dimension.
 
 The Phase 3 SQL migration is:
 
