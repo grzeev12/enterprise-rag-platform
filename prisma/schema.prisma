@@ -23,6 +23,9 @@ enum AuditAction {
   EMBEDDING_JOB_FAILED
   CHAT_CREATED
   CHAT_ARCHIVED
+  BUDGET_CREATED
+  BUDGET_UPDATED
+  BUDGET_ALERT_CREATED
 }
 
 enum AuditTargetType {
@@ -34,6 +37,8 @@ enum AuditTargetType {
   CRAWL
   EMBEDDING_JOB
   CHAT
+  BUDGET
+  BUDGET_ALERT
 }
 
 enum MembershipStatus {
@@ -124,6 +129,17 @@ enum MessageRole {
   TOOL
 }
 
+enum BudgetPeriod {
+  DAILY
+  MONTHLY
+}
+
+enum BudgetAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -135,16 +151,18 @@ model User {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
-  accounts      Account[]
-  sessions      Session[]
-  memberships   Membership[]
-  auditLogs      AuditLog[]    @relation("AuditActor")
-  createdOrgs    Organization[] @relation("OrganizationCreator")
-  createdSpaces  Workspace[]   @relation("WorkspaceCreator")
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  auditLogs        AuditLog[]        @relation("AuditActor")
+  createdOrgs      Organization[]    @relation("OrganizationCreator")
+  createdSpaces    Workspace[]       @relation("WorkspaceCreator")
   knowledgeSources KnowledgeSource[] @relation("KnowledgeSourceCreator")
   crawls           Crawl[]           @relation("CrawlCreator")
   documents        Document[]        @relation("DocumentCreator")
   embeddingJobs    EmbeddingJob[]    @relation("EmbeddingJobCreator")
+  budgets          Budget[]          @relation("BudgetCreator")
+  budgetAlerts     BudgetAlert[]     @relation("BudgetAlertCreator")
   chats            Chat[]
   messages         Message[]
   aiRequests       AiRequest[]
@@ -202,11 +220,11 @@ model Organization {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  createdBy   User         @relation("OrganizationCreator", fields: [createdById], references: [id])
-  memberships Membership[]
-  workspaces  Workspace[]
-  roles       Role[]
-  auditLogs   AuditLog[]
+  createdBy        User              @relation("OrganizationCreator", fields: [createdById], references: [id])
+  memberships      Membership[]
+  workspaces       Workspace[]
+  roles            Role[]
+  auditLogs        AuditLog[]
   knowledgeSources KnowledgeSource[]
   crawls           Crawl[]
   crawlPages       CrawlPage[]
@@ -220,6 +238,8 @@ model Organization {
   messageCitations MessageCitation[]
   llmProviders     LlmProvider[]
   modelConfigs     ModelConfig[]
+  budgets          Budget[]
+  budgetAlerts     BudgetAlert[]
 
   @@index([createdById])
   @@index([deletedAt])
@@ -235,11 +255,11 @@ model Workspace {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation("WorkspaceCreator", fields: [createdById], references: [id])
-  memberships  Membership[]
-  roles        Role[]
-  auditLogs    AuditLog[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User              @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  memberships      Membership[]
+  roles            Role[]
+  auditLogs        AuditLog[]
   knowledgeSources KnowledgeSource[]
   crawls           Crawl[]
   crawlPages       CrawlPage[]
@@ -252,6 +272,8 @@ model Workspace {
   messages         Message[]
   messageCitations MessageCitation[]
   modelConfigs     ModelConfig[]
+  budgets          Budget[]
+  budgetAlerts     BudgetAlert[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -369,12 +391,12 @@ model KnowledgeSource {
   updatedAt      DateTime              @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation("KnowledgeSourceCreator", fields: [createdById], references: [id])
-  crawls       Crawl[]
-  pages        CrawlPage[]
-  documents    Document[]
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy     User           @relation("KnowledgeSourceCreator", fields: [createdById], references: [id])
+  crawls        Crawl[]
+  pages         CrawlPage[]
+  documents     Document[]
   embeddingJobs EmbeddingJob[]
 
   @@index([organizationId, workspaceId, status])
@@ -485,22 +507,22 @@ model Document {
 }
 
 model DocumentChunk {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   workspaceId    String
   documentId     String
   chunkIndex     Int
-  content        String   @db.Text
+  content        String    @db.Text
   tokenEstimate  Int
   metadata       Json
   embeddingModel String?
   embeddedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document     Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
   embedding    ChunkEmbedding?
   citations    MessageCitation[]
 
@@ -511,16 +533,16 @@ model DocumentChunk {
 }
 
 model ChunkEmbedding {
-  id              String                  @id @default(cuid())
+  id              String                 @id @default(cuid())
   organizationId  String
   workspaceId     String
-  documentChunkId String                  @unique
+  documentChunkId String                 @unique
   model           String
   dimensions      Int
   vector          Unsupported("vector")?
   vectorJson      Json?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   chunk DocumentChunk @relation(fields: [documentChunkId], references: [id], onDelete: Cascade)
 
@@ -576,23 +598,23 @@ model LlmProvider {
 }
 
 model ModelConfig {
-  id                 String   @id @default(cuid())
-  organizationId     String?
-  workspaceId        String?
-  providerId         String
-  key                String
-  displayName        String
-  kind               String
-  modelName          String
-  dimensions         Int?
-  maxInputTokens     Int?
-  maxOutputTokens    Int?
-  promptTokenCostUsd Decimal? @db.Decimal(12, 8)
+  id                     String   @id @default(cuid())
+  organizationId         String?
+  workspaceId            String?
+  providerId             String
+  key                    String
+  displayName            String
+  kind                   String
+  modelName              String
+  dimensions             Int?
+  maxInputTokens         Int?
+  maxOutputTokens        Int?
+  promptTokenCostUsd     Decimal? @db.Decimal(12, 8)
   completionTokenCostUsd Decimal? @db.Decimal(12, 8)
-  isDefault          Boolean  @default(false)
-  isEnabled          Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  isDefault              Boolean  @default(false)
+  isEnabled              Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -603,25 +625,25 @@ model ModelConfig {
 }
 
 model AiRequest {
-  id             String          @id @default(cuid())
-  organizationId String
-  workspaceId    String
-  userId         String?
-  providerId     String?
-  model          String
-  type           AiRequestType
-  status         AiRequestStatus @default(PENDING)
-  chatId         String?
-  messageId      String?
-  promptTokens   Int?
+  id               String          @id @default(cuid())
+  organizationId   String
+  workspaceId      String
+  userId           String?
+  providerId       String?
+  model            String
+  type             AiRequestType
+  status           AiRequestStatus @default(PENDING)
+  chatId           String?
+  messageId        String?
+  promptTokens     Int?
   completionTokens Int?
-  totalTokens    Int?
-  latencyMs      Int?
-  errorCode      String?
-  errorMessage   String?         @db.Text
-  metadata       Json?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  totalTokens      Int?
+  latencyMs        Int?
+  errorCode        String?
+  errorMessage     String?         @db.Text
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -659,6 +681,52 @@ model TokenUsage {
   @@index([model, createdAt])
 }
 
+model Budget {
+  id               String       @id @default(cuid())
+  organizationId   String
+  workspaceId      String?
+  createdById      String?
+  name             String
+  period           BudgetPeriod @default(MONTHLY)
+  amountUsd        Decimal      @db.Decimal(12, 2)
+  thresholdPercent Int          @default(80)
+  startsAt         DateTime     @default(now())
+  endsAt           DateTime?
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("BudgetCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  alerts       BudgetAlert[]
+
+  @@index([organizationId, workspaceId, isActive])
+  @@index([createdById])
+}
+
+model BudgetAlert {
+  id               String            @id @default(cuid())
+  organizationId   String
+  workspaceId      String?
+  budgetId         String
+  createdById      String?
+  status           BudgetAlertStatus @default(OPEN)
+  thresholdPercent Int
+  amountUsd        Decimal           @db.Decimal(12, 2)
+  message          String            @db.Text
+  createdAt        DateTime          @default(now())
+  resolvedAt       DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  budget       Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("BudgetAlertCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, workspaceId, status])
+  @@index([budgetId, createdAt])
+}
+
 model Chat {
   id             String     @id @default(cuid())
   organizationId String
@@ -692,10 +760,10 @@ model Message {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  chat         Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chat         Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   citations    MessageCitation[]
   aiRequests   AiRequest[]
 

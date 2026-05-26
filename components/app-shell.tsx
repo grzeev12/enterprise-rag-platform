@@ -19,9 +19,9 @@ const navItems = [
   { href: "/knowledge", label: "Knowledge" },
   { href: "/chat", label: "Chat" },
   { href: "/admin", label: "Admin" },
+  { href: "/finops", label: "FinOps" },
   { href: "/dashboard?module=ingestion", label: "Ingestion" },
   { href: "/dashboard?module=rag", label: "RAG Chat" },
-  { href: "/dashboard?module=finops", label: "FinOps" },
   { href: "/dashboard?module=gateway", label: "LLM Gateway" }
 ];
 
