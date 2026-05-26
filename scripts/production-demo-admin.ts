@@ -27,14 +27,17 @@ const permissions = [
 const demoEmail = process.env.DEMO_ADMIN_EMAIL?.trim().toLowerCase() || "demo@example.com";
 const demoOrgSlug = process.env.DEMO_ADMIN_ORG_SLUG?.trim() || "demo-org";
 const demoWorkspaceSlug = process.env.DEMO_ADMIN_WORKSPACE_SLUG?.trim() || "demo-workspace";
-const mode = process.env.DEMO_ADMIN_MODE === "check" ? "check" : "seed";
+const mode =
+  process.env.DEMO_ADMIN_MODE === "check" || process.env.DEMO_ADMIN_MODE === "verify-password"
+    ? process.env.DEMO_ADMIN_MODE
+    : "seed";
 
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required");
   }
 
-  if (mode === "check") {
+  if (mode === "check" || mode === "verify-password") {
     await checkDemoAdmin();
     return;
   }
@@ -81,6 +84,10 @@ async function checkDemoAdmin() {
       membership.workspace.deletedAt === null &&
       membership.role.key === "workspace-admin"
   );
+  const passwordMatches =
+    mode === "verify-password" && user?.passwordHash && process.env.DEMO_ADMIN_PASSWORD
+      ? await bcrypt.compare(process.env.DEMO_ADMIN_PASSWORD, user.passwordHash)
+      : undefined;
 
   console.log(
     JSON.stringify({
@@ -89,7 +96,8 @@ async function checkDemoAdmin() {
       hasPasswordHash: Boolean(user?.passwordHash),
       active: Boolean(user && user.deletedAt === null),
       organizationOwner: Boolean(organizationMembership),
-      workspaceAdmin: Boolean(workspaceMembership)
+      workspaceAdmin: Boolean(workspaceMembership),
+      ...(mode === "verify-password" ? { passwordMatches: Boolean(passwordMatches) } : {})
     })
   );
 }

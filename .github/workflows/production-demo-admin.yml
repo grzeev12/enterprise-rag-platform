@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Check whether the demo admin exists, or seed/update it idempotently
+        description: Check whether the demo admin exists, verify its password, or seed/update it idempotently
         required: true
         default: check
         type: choice
         options:
           - check
+          - verify-password
           - seed
 
 jobs:
@@ -41,8 +42,8 @@ jobs:
             echo "::error::DATABASE_URL GitHub Secret is required."
             exit 1
           fi
-          if [ "$DEMO_ADMIN_MODE" = "seed" ] && [ -z "$DEMO_ADMIN_PASSWORD" ]; then
-            echo "::error::DEMO_ADMIN_PASSWORD GitHub Secret is required when mode=seed."
+          if [ "$DEMO_ADMIN_MODE" != "check" ] && [ -z "$DEMO_ADMIN_PASSWORD" ]; then
+            echo "::error::DEMO_ADMIN_PASSWORD GitHub Secret is required when mode=seed or mode=verify-password."
             exit 1
           fi
 

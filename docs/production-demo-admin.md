@@ -21,7 +21,7 @@ Manual usage:
 
 1. Run `Production Demo Admin` with `mode=check`.
 2. If the output shows `exists: false` or `hasPasswordHash: false`, run it again with `mode=seed`.
-3. Run it once more with `mode=check`.
+3. Run it once more with `mode=verify-password`.
 4. Confirm the output shows:
 
 ```json
@@ -30,7 +30,8 @@ Manual usage:
   "hasPasswordHash": true,
   "active": true,
   "organizationOwner": true,
-  "workspaceAdmin": true
+  "workspaceAdmin": true,
+  "passwordMatches": true
 }
 ```
 
