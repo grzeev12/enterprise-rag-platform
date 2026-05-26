@@ -1,0 +1,68 @@
+name: Production Super Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Check, verify password, or seed/update the production super admin
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - verify-password
+          - seed
+
+jobs:
+  super-admin:
+    name: Production super admin
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PRODUCTION_SUPER_ADMIN_PASSWORD: ${{ secrets.PRODUCTION_SUPER_ADMIN_PASSWORD }}
+      SUPER_ADMIN_MODE: ${{ inputs.mode }}
+      SUPER_ADMIN_NAME: zeev
+      SUPER_ADMIN_EMAIL: zeev@example.com
+      SUPER_ADMIN_ORG_NAME: Default Organization
+      SUPER_ADMIN_ORG_SLUG: default-organization
+      SUPER_ADMIN_WORKSPACE_NAME: Default Workspace
+      SUPER_ADMIN_WORKSPACE_SLUG: default-workspace
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mask secrets
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "::add-mask::$DATABASE_URL"
+          fi
+          if [ -n "$PRODUCTION_SUPER_ADMIN_PASSWORD" ]; then
+            echo "::add-mask::$PRODUCTION_SUPER_ADMIN_PASSWORD"
+          fi
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL GitHub Secret is required."
+            exit 1
+          fi
+          if [ "$SUPER_ADMIN_MODE" != "check" ] && [ -z "$PRODUCTION_SUPER_ADMIN_PASSWORD" ]; then
+            echo "::error::PRODUCTION_SUPER_ADMIN_PASSWORD GitHub Secret is required when mode=seed or mode=verify-password."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Check or seed super admin
+        run: npx tsx scripts/production-super-admin.ts

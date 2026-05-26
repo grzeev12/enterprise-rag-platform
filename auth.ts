@@ -10,7 +10,7 @@ import { logError, logInfo } from "@/lib/observability/logger";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8)
+  password: z.string().min(1)
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
