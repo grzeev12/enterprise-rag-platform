@@ -9,6 +9,7 @@ import { readEnv } from "@/lib/env";
 import { requireCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/db";
 import { isQueueConfigured } from "@/lib/ingestion/queue";
+import { isObjectStorageConfigured } from "@/lib/storage/blob";
 
 type AdminPageProps = {
   searchParams: Promise<{
@@ -160,7 +161,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         <CardContent className="grid gap-3 md:grid-cols-4">
           <HealthItem label="Database" ready detail="Connected for this request" />
           <HealthItem label="Redis queue" ready={isQueueConfigured()} detail="Required for crawl and index retries" />
-          <HealthItem label="Azure Blob" ready={Boolean(readEnv("AZURE_STORAGE_CONNECTION_STRING"))} detail="Required for page storage" />
+          <HealthItem label="Object storage" ready={isObjectStorageConfigured()} detail="Required for page storage" />
           <HealthItem label="OpenAI" ready={Boolean(readEnv("OPENAI_API_KEY"))} detail="Required for embeddings and chat" />
         </CardContent>
       </Card>

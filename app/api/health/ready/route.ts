@@ -1,12 +1,13 @@
 import { validateEnvironment } from "@/lib/env-validation";
 import { readEnv } from "@/lib/env";
+import { isObjectStorageConfigured } from "@/lib/storage/blob";
 
 export async function GET() {
   const env = validateEnvironment("app");
   const dependencies = {
     databaseConfigured: Boolean(readEnv("DATABASE_URL")),
     redisConfigured: Boolean(readEnv("REDIS_URL")),
-    blobConfigured: Boolean(readEnv("AZURE_STORAGE_CONNECTION_STRING")),
+    objectStorageConfigured: isObjectStorageConfigured(),
     aiConfigured: Boolean(readEnv("OPENAI_API_KEY"))
   };
   const ok = env.ok;

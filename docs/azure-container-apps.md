@@ -1,6 +1,8 @@
 # Azure Container Apps Worker Deployment Guide
 
-The worker service is deployed separately from Vercel. It consumes BullMQ jobs from Azure Cache for Redis, writes crawl artifacts to Azure Blob Storage, and talks to Azure PostgreSQL.
+Azure Container Apps is the enterprise scale-up target for the worker service. The low-cost MVP can run the same `Dockerfile.worker` image on a smaller worker host, while keeping this guide ready for migration.
+
+When deployed to Azure, the worker service is deployed separately from Vercel. It consumes BullMQ jobs from Azure Cache for Redis, writes crawl artifacts to Azure Blob Storage, and talks to Azure PostgreSQL.
 
 ## Build Target
 
@@ -63,3 +65,7 @@ AZURE_RESOURCE_GROUP
 ```
 
 The workflow builds `Dockerfile.worker`, pushes the image to ACR, and updates only the Azure Container App worker.
+
+## Low-Cost MVP Note
+
+Before Azure Container Apps is provisioned, run the worker image on a small always-on worker host with Neon, Upstash-compatible Redis, and the same object storage variables. Do not run workers on Vercel.

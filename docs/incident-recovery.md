@@ -9,7 +9,7 @@
 
 ## Worker Degradation
 
-1. Check Azure Container Apps replica status.
+1. Check the active worker host status. For the low-cost MVP this may be a small container/VM service; after migration it is Azure Container Apps.
 2. Review worker logs for `worker.job_failed` events.
 3. Inspect BullMQ failed jobs; failed jobs are retained as the dead-letter scaffold.
 4. Scale workers only after Redis and PostgreSQL are healthy.

@@ -4,19 +4,27 @@ This project implements the multi-tenant SaaS foundation, safe website ingestion
 
 ## Deployment Architecture
 
-Production targets:
+Low-cost MVP production targets:
 
 - GitHub for source control and CI
 - Vercel for only the Next.js application layer
-- Azure Database for PostgreSQL Flexible Server for relational data and future pgvector indexes
-- Azure Cache for Redis for BullMQ
-- Azure Blob Storage for raw crawl HTML and processed text artifacts
-- Azure Container Apps for the isolated background worker service
-- Azure Key Vault for production secrets
+- Neon PostgreSQL with pgvector for relational data and vector indexes
+- Upstash Redis for queue transport when BullMQ compatibility is acceptable for the selected plan
+- Azure Blob Storage or Cloudflare R2 for raw crawl HTML and processed text artifacts
+- A small separate worker runtime for the isolated background worker service
+- Vercel and worker-host environment secrets
 
-Docker is used only for local development and Azure Container Apps worker deployment. The Next.js app enqueues ingestion and embedding jobs; workers do not run on Vercel. The worker service is packaged with [Dockerfile.worker](/Users/zeevgrinberg/Documents/Search/Dockerfile.worker) and deployed separately to Azure Container Apps.
+Azure readiness is retained for enterprise migration:
 
-See [deployment docs](/Users/zeevgrinberg/Documents/Search/docs/deployment.md), [Azure Container Apps guide](/Users/zeevgrinberg/Documents/Search/docs/azure-container-apps.md), and [Azure environment checklist](/Users/zeevgrinberg/Documents/Search/docs/azure-env-checklist.md) for Vercel and Azure setup.
+- Azure Database for PostgreSQL Flexible Server can replace Neon later.
+- Azure Cache for Redis can replace Upstash later.
+- Azure Blob Storage remains the implemented object storage driver; Cloudflare R2 is scaffolded as a future S3-compatible adapter option.
+- Azure Container Apps remains the recommended scale-up target for workers.
+- Azure Key Vault remains the enterprise secret-management target.
+
+Docker is used for local development and for packaging the worker image. The Next.js app enqueues ingestion and embedding jobs; workers do not run on Vercel. The worker service is packaged with [Dockerfile.worker](/Users/zeevgrinberg/Documents/Search/Dockerfile.worker) and can run on a low-cost worker host now, then move to Azure Container Apps later.
+
+See [deployment docs](/Users/zeevgrinberg/Documents/Search/docs/deployment.md), [cost-optimized MVP architecture](/Users/zeevgrinberg/Documents/Search/docs/cost-optimized-mvp.md), [infrastructure abstraction notes](/Users/zeevgrinberg/Documents/Search/docs/infrastructure.md), [Azure Container Apps guide](/Users/zeevgrinberg/Documents/Search/docs/azure-container-apps.md), and [Azure environment checklist](/Users/zeevgrinberg/Documents/Search/docs/azure-env-checklist.md) for deployment setup.
 See [production hardening](/Users/zeevgrinberg/Documents/Search/docs/production-hardening.md) and [incident recovery](/Users/zeevgrinberg/Documents/Search/docs/incident-recovery.md) for enterprise readiness notes.
 
 ## Stack
@@ -27,9 +35,9 @@ See [production hardening](/Users/zeevgrinberg/Documents/Search/docs/production-
 - shadcn/ui-style primitives
 - Auth.js / NextAuth
 - Prisma
-- PostgreSQL with pgvector locally, Azure Database for PostgreSQL Flexible Server in production
-- Redis locally, Azure Cache for Redis in production
-- Azure Blob Storage, with Azurite for local development
+- PostgreSQL with pgvector locally, Neon PostgreSQL for low-cost production, Azure PostgreSQL for enterprise scale-up
+- Redis locally, Upstash Redis for low-cost production when BullMQ-compatible, Azure Cache for Redis for enterprise scale-up
+- Provider-neutral object storage boundary, implemented with Azure Blob Storage and Azurite locally; Cloudflare R2 is scaffolded for a future adapter
 - OpenAI-compatible AI Gateway foundation
 - Docker Compose
 
@@ -206,7 +214,7 @@ Chat runs at `/chat`. The send flow is:
 
 Unknown answers return: `I could not find that in the available sources.`
 
-Local/Azure PostgreSQL must enable pgvector:
+Local/Neon/Azure PostgreSQL must enable pgvector:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -228,7 +236,7 @@ Known limitations:
 
 ## CI and Deployment Pipelines
 
-No production secrets should be committed. Use `.env.example` for names and placeholder values only; put real values in Vercel, Azure Key Vault, Azure Container Apps secrets, or GitHub Actions secrets.
+No production secrets should be committed. Use `.env.example` for names and placeholder values only; put real values in Vercel, the worker host, Azure Key Vault, Azure Container Apps secrets, or GitHub Actions secrets.
 
 Frontend pipeline: `.github/workflows/frontend-ci.yml`
 
@@ -250,7 +258,7 @@ Frontend deployment pipeline: `.github/workflows/frontend-deploy.yml`
 
 Worker pipeline: `.github/workflows/worker-ci.yml`
 
-It validates the isolated Azure Container Apps worker service:
+It validates the isolated worker service:
 
 - install
 - Prisma generate
@@ -261,6 +269,6 @@ It validates the isolated Azure Container Apps worker service:
 
 Worker deployment pipeline: `.github/workflows/worker-deploy.yml`
 
-- manual Azure Container Apps deployment
+- manual Azure Container Apps deployment path for future scale-up
 - builds and pushes `Dockerfile.worker`
 - updates only the worker Container App

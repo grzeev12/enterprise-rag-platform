@@ -169,7 +169,7 @@ export default async function FinopsPage({ searchParams }: FinopsPageProps) {
       <Card>
         <CardHeader>
           <CardTitle>Crawl and indexing estimates</CardTitle>
-          <CardDescription>Embedding token spend is tracked; crawler infrastructure estimates are reserved for the Azure operations meter.</CardDescription>
+          <CardDescription>Embedding token spend is tracked; crawler infrastructure estimates are reserved for the worker operations meter.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <EstimateItem label="Embedding tokens" value={overview.summary.embeddingTokens.toLocaleString()} />

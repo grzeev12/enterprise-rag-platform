@@ -1,61 +1,57 @@
 # Deployment Architecture
 
-Production is split into two deployable services plus managed Azure infrastructure:
+Production is split into two deployable services plus managed infrastructure:
 
 - GitHub hosts the source repository and runs CI.
 - Vercel runs only the Next.js application layer: frontend, server components, and API routes.
-- Azure Database for PostgreSQL Flexible Server stores relational data and future pgvector indexes.
-- Azure Cache for Redis backs BullMQ.
-- Azure Blob Storage stores raw crawl HTML and processed text artifacts.
-- Azure Container Apps runs the isolated background worker service.
-- Azure Key Vault stores production secrets.
+- Neon PostgreSQL with pgvector is the low-cost MVP production database.
+- Upstash Redis is the low-cost Redis option if the selected plan supports the Redis protocol required by BullMQ.
+- Azure Blob Storage is the implemented object storage driver; Cloudflare R2 is a low-cost S3-compatible option for a future adapter.
+- A separate worker runtime runs `Dockerfile.worker`; Azure Container Apps remains the future scale-up target.
 
-Docker is used in two places only:
+The deployment plan is provider-agnostic at the app boundary:
 
-- Local development, through `docker-compose.yml`.
-- Azure Container Apps deployment, through `Dockerfile.worker`.
+- `DATABASE_URL` can point to local Postgres, Neon, or Azure PostgreSQL.
+- `REDIS_URL` can point to local Redis, Upstash Redis, or Azure Cache for Redis.
+- `OBJECT_STORAGE_PROVIDER` selects the object storage adapter. `azure-blob` is implemented. `cloudflare-r2` is documented and scaffolded for a future adapter.
 
-The crawler, embedding, and queue workers must not run on Vercel. They are long-running background services with outbound crawling, retries, rate limits, queue consumers, blob writes, and embedding calls. Deploy them as Azure Container Apps from `Dockerfile.worker`.
+The crawler, embedding, and queue workers must not run on Vercel. They are long-running background services with outbound crawling, retries, rate limits, queue consumers, blob writes, and embedding calls.
 
 Companion docs:
 
+- `docs/cost-optimized-mvp.md`
+- `docs/infrastructure.md`
 - `docs/azure-container-apps.md`
 - `docs/azure-env-checklist.md`
 
 ## GitHub Repository
 
-1. Create a private GitHub repository.
-2. Push the project to `main`.
-3. Confirm `.github/workflows/frontend-ci.yml` and `.github/workflows/worker-ci.yml` run on push and pull request.
-4. Store deployment credentials as GitHub Actions secrets only if you later add automated deployments. The current workflow validates code but does not deploy.
+1. Push the project to `main`.
+2. Confirm `.github/workflows/frontend-ci.yml` and `.github/workflows/worker-ci.yml` run on push and pull request.
+3. Store deployment credentials as GitHub Actions secrets only if you later add automated deployments.
 
 CI is intentionally split:
 
 - `.github/workflows/frontend-ci.yml` validates the Vercel-hosted Next.js app.
 - `.github/workflows/worker-ci.yml` validates the worker service and builds the worker container image.
 - `.github/workflows/frontend-deploy.yml` is a manual Vercel deployment path for the Next.js app.
-- `.github/workflows/worker-deploy.yml` is a manual Azure Container Apps deployment path for the worker image.
-
-Frontend CI performs install, Prisma generation, lint, typecheck, test, Prisma validate, and Next.js build.
-
-Worker CI performs install, Prisma generation, typecheck, test, Prisma validate, and worker Docker image build.
-
-Deployment workflows are manual by default so teams can wire environment approvals, protected branches, and release tagging without coupling frontend and worker releases.
+- `.github/workflows/worker-deploy.yml` is a manual Azure Container Apps deployment path for the worker image when the project migrates to Azure-managed workers.
 
 ## Vercel
 
 Deploy the web/API project to Vercel from GitHub.
 
-Required Vercel environment variables:
+Required low-cost MVP Vercel environment variables:
 
 ```bash
-DATABASE_URL="postgresql://app_user:<password>@<pg-server>.postgres.database.azure.com:5432/enterprise_ai_saas?schema=public&sslmode=require"
+DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<database>?sslmode=require"
 AUTH_SECRET="<long-random-secret>"
 AUTH_URL="https://app.example.com"
 NEXT_PUBLIC_APP_URL="https://app.example.com"
-REDIS_URL="rediss://:<access-key>@<redis-name>.redis.cache.windows.net:6380"
+REDIS_URL="rediss://default:<upstash-password>@<upstash-host>:6379"
+OBJECT_STORAGE_PROVIDER="azure-blob"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
 AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
-AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas-production"
 OPENAI_API_KEY="<openai-api-key>"
 OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
@@ -63,69 +59,66 @@ OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 
 Notes:
 
-- Vercel API routes enqueue crawl jobs but do not process them.
+- Vercel API routes enqueue crawl/index jobs but do not process them.
 - Vercel must not build or run `Dockerfile.worker`.
 - Run Prisma migrations from CI/CD or an operator workstation, not inside Vercel serverless requests.
 - Keep `AUTH_URL` aligned with the production domain.
-- Optional manual GitHub deployment uses `frontend-deploy.yml` and requires `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` secrets.
 
-## Azure Database for PostgreSQL Flexible Server
+## Neon PostgreSQL
 
-Use Azure Database for PostgreSQL Flexible Server for production.
+Use Neon PostgreSQL for the low-cost MVP database.
 
 Requirements:
 
-- PostgreSQL 16 recommended.
-- Enable the `vector` extension before future embedding work.
-- Require SSL connections.
-- Restrict firewall/network access to Vercel outbound access strategy and Azure Container Apps environment where possible.
-- Use a dedicated application user, not the server admin user.
+- PostgreSQL version with pgvector support.
+- SSL required in the connection string.
+- A pooled URL can be used for serverless app/API access if compatible with Prisma migrations; use the direct URL for migrations when Neon recommends it.
+- Keep tenant isolation in application queries; Neon is a shared production database for all tenants.
 
-After provisioning, run:
+Enable pgvector:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-Then run migrations:
+Run migrations:
 
 ```bash
-DATABASE_URL="postgresql://app_user:<password>@<pg-server>.postgres.database.azure.com:5432/enterprise_ai_saas?schema=public&sslmode=require" \
-npm run prisma:migrate -- --name deploy
-```
-
-For production release flows, prefer:
-
-```bash
+DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<database>?sslmode=require" \
 npx prisma migrate deploy
 ```
 
-## Azure Cache for Redis
+## Upstash Redis and BullMQ
 
-Use Azure Cache for Redis for BullMQ.
+Use Upstash Redis only when the selected Upstash product/plan exposes a Redis protocol endpoint compatible with BullMQ and ioredis-style connections.
 
 Required app/worker variable:
 
 ```bash
-REDIS_URL="rediss://:<access-key>@<redis-name>.redis.cache.windows.net:6380"
+REDIS_URL="rediss://default:<upstash-password>@<upstash-host>:6379"
 ```
 
-Notes:
+BullMQ compatibility notes:
 
-- Use TLS with `rediss://`.
-- The Next.js app needs Redis only to enqueue jobs.
-- Azure Container Apps workers need Redis to consume jobs.
-- Monitor queue length and failed jobs before increasing worker concurrency.
+- BullMQ expects a Redis-compatible TCP connection and uses blocking/job coordination commands.
+- Upstash REST APIs are not a drop-in BullMQ backend.
+- Serverless Redis products can have connection, latency, command, or eviction limits that are acceptable for an MVP but should be load-tested before production customer onboarding.
+- Keep failed jobs retained and monitor queue depth closely.
 
-## Azure Blob Storage
+If BullMQ is not compatible with the chosen Upstash tier, use one of these alternatives:
 
-Use Azure Blob Storage for crawl artifacts.
+- Run a tiny managed Redis instance from another low-cost host for the worker queue.
+- Use Upstash QStash for HTTP-delivered jobs and add a queue adapter that maps ingestion jobs to signed worker endpoints.
+- Move the worker queue directly to Azure Cache for Redis while keeping Neon and Vercel for the rest of the MVP.
 
-Required variables:
+## Object Storage
+
+The current implemented object storage adapter is Azure Blob Storage, selected with:
 
 ```bash
-AZURE_STORAGE_CONNECTION_STRING="<connection-string>"
-AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas-production"
+OBJECT_STORAGE_PROVIDER="azure-blob"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
+AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
 ```
 
 Current stored artifacts:
@@ -133,16 +126,24 @@ Current stored artifacts:
 - `raw/{organizationId}/{workspaceId}/{crawlId}/{pageId}.html`
 - `processed/{organizationId}/{workspaceId}/{crawlId}/{pageId}.txt`
 
+Cloudflare R2 is a valid low-cost target, but it requires a future S3-compatible adapter before enabling in production:
+
+```bash
+OBJECT_STORAGE_PROVIDER="cloudflare-r2"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
+R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+R2_ACCESS_KEY_ID="<r2-access-key>"
+R2_SECRET_ACCESS_KEY="<r2-secret-key>"
+```
+
 Recommended production settings:
 
-- Private container access.
-- Lifecycle policy for raw crawl artifacts if retention rules permit.
-- Separate containers per environment.
-- Store connection strings in Azure Key Vault.
+- Private buckets/containers only.
+- Separate buckets/containers per environment.
+- Lifecycle policies for raw crawl artifacts if retention rules permit.
+- Secrets stored in Vercel, worker-host secrets, or Azure Key Vault after migration.
 
-## Azure Container Apps
-
-Build and deploy the worker service from `Dockerfile.worker`.
+## Worker Runtime
 
 The worker command is:
 
@@ -150,49 +151,47 @@ The worker command is:
 npm run worker:ingestion
 ```
 
-Required worker environment variables:
+For the low-cost MVP, run the worker as a separate service on a small always-on container/VM platform. It must receive the same `DATABASE_URL`, `REDIS_URL`, object storage variables, and OpenAI variables as the app, plus worker tuning variables:
 
 ```bash
-DATABASE_URL="postgresql://app_user:<password>@<pg-server>.postgres.database.azure.com:5432/enterprise_ai_saas?schema=public&sslmode=require"
-REDIS_URL="rediss://:<access-key>@<redis-name>.redis.cache.windows.net:6380"
-AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
-AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas-production"
-OPENAI_API_KEY="<openai-api-key>"
 INGESTION_WORKER_CONCURRENCY="3"
 CRAWL_CHUNK_SIZE="1200"
 CRAWL_CHUNK_OVERLAP="180"
 EMBEDDING_JOB_MAX_CHUNKS="1000"
 ```
 
-Deployment shape:
+Deployment rules:
 
-- One Azure Container App for the worker service.
-- Scale min replicas to `0` or `1` depending on latency requirements.
-- Scale max replicas based on Redis queue depth.
+- Do not expose the worker publicly unless you intentionally implement an HTTP queue adapter such as QStash.
 - Give workers outbound internet access for lawful public crawling.
-- Do not expose the worker publicly.
-- Use the worker pipeline, not the frontend pipeline, to build/publish worker images.
-- Optional manual GitHub deployment uses `worker-deploy.yml` and requires `AZURE_CREDENTIALS`, `ACR_NAME`, `ACR_LOGIN_SERVER`, `AZURE_CONTAINER_APP_NAME`, and `AZURE_RESOURCE_GROUP` secrets.
+- Scale worker count only after Redis and PostgreSQL are healthy.
+- Keep the worker pipeline separate from the Vercel pipeline.
 
-See `docs/azure-container-apps.md` for the focused worker deployment checklist.
+## Azure Migration Path
 
-## Azure Key Vault
+Azure readiness is preserved. When the MVP outgrows low-cost services:
 
-Store production secrets in Azure Key Vault:
+- Replace Neon with Azure Database for PostgreSQL Flexible Server.
+- Replace Upstash or alternate Redis with Azure Cache for Redis.
+- Keep Azure Blob Storage or migrate object storage through the provider adapter boundary.
+- Deploy `Dockerfile.worker` to Azure Container Apps.
+- Move production secrets to Azure Key Vault.
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `AUTH_SECRET`
-- `AZURE_STORAGE_CONNECTION_STRING`
-- `OPENAI_API_KEY`
+Azure production equivalents:
 
-Use managed identity for Azure Container Apps where possible. For Vercel, mirror required secrets into Vercel environment variables or integrate through your approved secret sync process.
+```bash
+DATABASE_URL="postgresql://app_user:<password>@<pg-server>.postgres.database.azure.com:5432/enterprise_ai_saas?schema=public&sslmode=require"
+REDIS_URL="rediss://:<access-key>@<redis-name>.redis.cache.windows.net:6380"
+OBJECT_STORAGE_PROVIDER="azure-blob"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
+AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
+```
 
-See `docs/azure-env-checklist.md` for the full environment variable checklist.
+See `docs/azure-container-apps.md` and `docs/azure-env-checklist.md` for the focused Azure checklist.
 
 ## Local Development
 
-Local Docker Compose mirrors Azure managed services as closely as practical:
+Local Docker Compose mirrors production service categories as closely as practical:
 
 - Postgres with pgvector image
 - Redis
@@ -211,7 +210,7 @@ Run the worker directly on the host:
 npm run worker:dev
 ```
 
-Or run the worker as a local container, matching Azure Container Apps more closely:
+Or run the worker as a local container:
 
 ```bash
 docker compose --profile worker up --build worker
@@ -220,6 +219,8 @@ docker compose --profile worker up --build worker
 Use:
 
 ```bash
+OBJECT_STORAGE_PROVIDER="azure-blob"
+OBJECT_STORAGE_CONTAINER="enterprise-ai-saas"
 AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
 AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas"
 ```
@@ -228,7 +229,7 @@ AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas"
 
 Phase 3 adds `ChunkEmbedding.vector` as a pgvector column and creates an HNSW cosine index in `prisma/migrations/20260526000000_phase3_embeddings_rag/migration.sql`.
 
-Local and Azure PostgreSQL both need:
+Local, Neon, and Azure PostgreSQL all need:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
