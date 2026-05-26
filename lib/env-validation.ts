@@ -1,4 +1,5 @@
 import { readEnv } from "@/lib/env";
+import { isAiProviderConfigured } from "@/lib/ai/provider-config";
 import { isObjectStorageConfigured } from "@/lib/storage/blob";
 
 const appRequired = ["NEXT_PUBLIC_APP_URL"];
@@ -16,6 +17,9 @@ export function validateEnvironment(target: "app" | "worker" | "all" = "app") {
       if (!alternative.keys.some((key) => readEnv(key))) {
         missing.push(alternative.label);
       }
+    }
+    if (!isAiProviderConfigured()) {
+      missing.push("Azure OpenAI configuration or OPENAI_API_KEY");
     }
   }
 

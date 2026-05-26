@@ -16,6 +16,10 @@ jobs:
       NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'https://production.example.invalid' }}
       NEXT_PUBLIC_APP_URL: ${{ secrets.NEXTAUTH_URL || 'https://production.example.invalid' }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+      AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
       OPENAI_CHAT_MODEL: gpt-4o-mini
       OPENAI_EMBEDDING_MODEL: text-embedding-3-small
       REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -32,7 +36,7 @@ jobs:
       - name: Verify required secrets
         run: |
           missing=0
-          for name in DATABASE_URL NEXTAUTH_SECRET OPENAI_API_KEY; do
+          for name in DATABASE_URL NEXTAUTH_SECRET; do
             if [ -z "${!name}" ]; then
               echo "::error::${name} GitHub Secret is required"
               missing=1
@@ -40,6 +44,16 @@ jobs:
               echo "::add-mask::${!name}"
             fi
           done
+          if [ -n "$AZURE_OPENAI_API_KEY" ] && [ -n "$AZURE_OPENAI_ENDPOINT" ] && [ -n "$AZURE_OPENAI_DEPLOYMENT" ]; then
+            echo "::add-mask::$AZURE_OPENAI_API_KEY"
+            echo "Azure OpenAI configuration detected."
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            echo "::add-mask::$OPENAI_API_KEY"
+            echo "Standard OpenAI configuration detected."
+          else
+            echo "::error::Configure either AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_DEPLOYMENT, or OPENAI_API_KEY"
+            missing=1
+          fi
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi

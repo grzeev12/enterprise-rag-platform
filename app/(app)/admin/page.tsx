@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { adminTenantWhere, getAdminScopes, resolveAdminScope } from "@/lib/admin";
-import { readEnv } from "@/lib/env";
+import { isAiProviderConfigured } from "@/lib/ai/provider-config";
 import { requireCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/db";
 import { isQueueConfigured } from "@/lib/ingestion/queue";
@@ -162,7 +162,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <HealthItem label="Database" ready detail="Connected for this request" />
           <HealthItem label="Redis queue" ready={isQueueConfigured()} detail="Required for crawl and index retries" />
           <HealthItem label="Object storage" ready={isObjectStorageConfigured()} detail="Required for page storage" />
-          <HealthItem label="OpenAI" ready={Boolean(readEnv("OPENAI_API_KEY"))} detail="Required for embeddings and chat" />
+          <HealthItem label="AI provider" ready={isAiProviderConfigured()} detail="Azure OpenAI or OpenAI is required for embeddings and chat" />
         </CardContent>
       </Card>
 

@@ -53,13 +53,19 @@ Required GitHub Secrets:
 ```bash
 DATABASE_URL="<neon-production-url>"
 NEXTAUTH_SECRET="<production-auth-secret>"
-OPENAI_API_KEY="<production-openai-api-key>"
+AZURE_OPENAI_API_KEY="<production-azure-openai-api-key>"
+AZURE_OPENAI_ENDPOINT="https://<resource-name>.openai.azure.com"
+AZURE_OPENAI_DEPLOYMENT="<production-deployment-name>"
 ```
+
+`OPENAI_API_KEY` can be used instead of Azure OpenAI credentials for standard OpenAI compatibility.
 
 Optional GitHub Secrets:
 
 ```bash
 NEXTAUTH_URL="https://app.example.com"
+OPENAI_API_KEY="<optional-standard-openai-api-key>"
+AZURE_OPENAI_API_VERSION="2024-10-21"
 REDIS_URL="rediss://default:<upstash-password>@<upstash-host>:6379"
 OBJECT_STORAGE_PROVIDER="azure-blob"
 OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
@@ -92,7 +98,7 @@ Safety rules:
 
 `Production Verification` is manual only. It:
 
-- requires `DATABASE_URL`, `NEXTAUTH_SECRET`, and `OPENAI_API_KEY`
+- requires `DATABASE_URL`, `NEXTAUTH_SECRET`, and either Azure OpenAI credentials or `OPENAI_API_KEY`
 - runs Prisma validation
 - runs tenant-aware smoke checks
 - builds with production-like env values
@@ -113,7 +119,11 @@ REDIS_URL="rediss://default:<upstash-password>@<upstash-host>:6379"
 OBJECT_STORAGE_PROVIDER="azure-blob"
 OBJECT_STORAGE_CONTAINER="enterprise-ai-saas-production"
 AZURE_STORAGE_CONNECTION_STRING="<blob-connection-string>"
-OPENAI_API_KEY="<openai-api-key>"
+AZURE_OPENAI_API_KEY="<azure-openai-api-key>"
+AZURE_OPENAI_ENDPOINT="https://<resource-name>.openai.azure.com"
+AZURE_OPENAI_DEPLOYMENT="<deployment-name>"
+AZURE_OPENAI_API_VERSION="2024-10-21"
+OPENAI_API_KEY="<optional-standard-openai-api-key>"
 OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 ```
@@ -121,7 +131,9 @@ OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 Notes:
 
 - Vercel runtime env vars are configured separately from GitHub Secrets.
-- Vercel should have `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, `OPENAI_API_KEY`, and any optional Redis/object-storage variables used at runtime.
+- Vercel should have `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, Azure OpenAI variables or `OPENAI_API_KEY`, and any optional Redis/object-storage variables used at runtime.
+- Azure OpenAI is preferred when `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_DEPLOYMENT` are set.
+- Standard OpenAI remains compatible with `OPENAI_API_KEY`.
 - Vercel API routes enqueue crawl/index jobs but do not process them.
 - Vercel must not build or run `Dockerfile.worker`.
 - Run Prisma migrations from CI/CD or an operator workstation, not inside Vercel serverless requests.
@@ -338,7 +350,7 @@ Similarity search uses cosine distance:
 ORDER BY "vector" <=> $queryVector
 ```
 
-The default embedding model is OpenAI `text-embedding-3-small`, which produces 1536-dimensional vectors. Keep this env value aligned with the database column and index:
+The default embedding model is OpenAI-compatible `text-embedding-3-small`, which produces 1536-dimensional vectors. Keep this env value aligned with the database column and index:
 
 ```bash
 OPENAI_EMBEDDING_DIMENSIONS="1536"

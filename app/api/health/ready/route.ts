@@ -1,5 +1,6 @@
 import { validateEnvironment } from "@/lib/env-validation";
 import { readEnv } from "@/lib/env";
+import { isAiProviderConfigured } from "@/lib/ai/provider-config";
 import { isObjectStorageConfigured } from "@/lib/storage/blob";
 
 export async function GET() {
@@ -8,7 +9,7 @@ export async function GET() {
     databaseConfigured: Boolean(readEnv("DATABASE_URL")),
     redisConfigured: Boolean(readEnv("REDIS_URL")),
     objectStorageConfigured: isObjectStorageConfigured(),
-    aiConfigured: Boolean(readEnv("OPENAI_API_KEY"))
+    aiConfigured: isAiProviderConfigured()
   };
   const ok = env.ok;
 

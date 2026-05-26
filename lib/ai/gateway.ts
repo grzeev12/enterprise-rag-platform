@@ -1,3 +1,4 @@
+import { AzureOpenAiProvider } from "@/lib/ai/azure-openai-provider";
 import { OpenAiProvider } from "@/lib/ai/openai-provider";
 import type { AiProvider } from "@/lib/ai/types";
 import { ScaffoldProvider } from "@/lib/ai/scaffold-provider";
@@ -22,6 +23,14 @@ export function getAiProvider(
     return new OpenAiProvider({
       apiKeyEnv: config.apiKeySecretRef ?? providerCatalog.openai.envVar,
       baseUrl: config.baseUrl,
+      timeoutMs: config.timeoutMs,
+      maxRetries: config.maxRetries
+    });
+  }
+  if (key === "azure-openai") {
+    return new AzureOpenAiProvider({
+      apiKeyEnv: config.apiKeySecretRef ?? providerCatalog["azure-openai"].envVar,
+      endpoint: config.baseUrl,
       timeoutMs: config.timeoutMs,
       maxRetries: config.maxRetries
     });

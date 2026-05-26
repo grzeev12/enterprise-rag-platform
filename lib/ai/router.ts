@@ -2,6 +2,7 @@ import type { ModelConfig, RoutingPolicy } from "@prisma/client";
 import { AiProviderError, type AiProvider, type ChatMessage, type StreamDelta } from "@/lib/ai/types";
 import { getAiProvider, isProviderKey, type ProviderKey } from "@/lib/ai/gateway";
 import { defaultChatModel, defaultEmbeddingModel } from "@/lib/ai/openai-provider";
+import { azureOpenAiDeployment, preferredProviderKey } from "@/lib/ai/provider-config";
 import { prisma } from "@/lib/db";
 import { logError, logInfo } from "@/lib/observability/logger";
 
@@ -149,10 +150,14 @@ function toRoute(config: NonNullable<ResolvedModelRoute["config"]>): ResolvedMod
 }
 
 function fallbackOpenAiRoute(kind: "chat" | "embedding"): ResolvedModelRoute {
+  const providerKey = preferredProviderKey();
+  const azureDeployment = azureOpenAiDeployment();
   return {
-    providerKey: "openai",
-    provider: getAiProvider("openai"),
-    model: kind === "chat" ? defaultChatModel() : defaultEmbeddingModel(),
+    providerKey,
+    provider: getAiProvider(providerKey),
+    model: providerKey === "azure-openai" && azureDeployment
+      ? azureDeployment
+      : kind === "chat" ? defaultChatModel() : defaultEmbeddingModel(),
     fallbackChain: []
   };
 }

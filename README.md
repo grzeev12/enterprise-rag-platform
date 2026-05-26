@@ -35,7 +35,8 @@ Required GitHub Secrets:
 
 - `DATABASE_URL`: Neon production database URL. Prefer the direct URL for migrations if Neon provides both direct and pooled URLs.
 - `NEXTAUTH_SECRET`: production Auth.js/NextAuth secret. The workflows map it to `AUTH_SECRET`.
-- `OPENAI_API_KEY`: production OpenAI key for build-time/runtime readiness checks.
+- Azure OpenAI primary path: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_DEPLOYMENT`.
+- Standard OpenAI fallback path: `OPENAI_API_KEY`.
 
 Optional GitHub Secrets:
 
@@ -48,6 +49,7 @@ Optional GitHub Secrets:
 - `R2_ENDPOINT`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+- `AZURE_OPENAI_API_VERSION`
 
 Workflows:
 
@@ -55,7 +57,7 @@ Workflows:
 - `Production DB Migrate`: manual only; runs `prisma migrate deploy`, verifies pgvector, and runs safe DB connectivity checks.
 - `Production Verification`: manual only; validates Prisma, runs tenant-aware smoke checks, and builds with production-like env.
 
-Vercel still needs runtime environment variables configured separately in the Vercel dashboard: `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, `OPENAI_API_KEY`, and optional Redis/object-storage variables.
+Vercel still needs runtime environment variables configured separately in the Vercel dashboard: `DATABASE_URL`, `NEXTAUTH_SECRET` or `AUTH_SECRET`, `NEXTAUTH_URL` or `AUTH_URL`, Azure OpenAI variables or `OPENAI_API_KEY`, and optional Redis/object-storage variables.
 
 ## Stack
 
@@ -210,6 +212,10 @@ The crawler is intentionally lawful and conservative:
 REDIS_URL="redis://localhost:6379"
 AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
 AZURE_STORAGE_CONTAINER_NAME="enterprise-ai-saas"
+AZURE_OPENAI_API_KEY=""
+AZURE_OPENAI_ENDPOINT=""
+AZURE_OPENAI_DEPLOYMENT=""
+AZURE_OPENAI_API_VERSION="2024-10-21"
 OPENAI_API_KEY=""
 OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
@@ -226,7 +232,7 @@ EMBEDDING_JOB_MAX_CHUNKS="1000"
 
 ## Embeddings and RAG Chat
 
-Phase 3 adds an OpenAI-first AI Gateway foundation for:
+Phase 3 adds an Azure OpenAI-first, OpenAI-compatible AI Gateway foundation for:
 
 - embeddings
 - chat completion
@@ -257,7 +263,7 @@ For Neon production, use the pooled connection string in Vercel and the direct c
 SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 ```
 
-The current embedding index is fixed to OpenAI `text-embedding-3-small` dimensions:
+The current embedding index is fixed to OpenAI-compatible `text-embedding-3-small` dimensions:
 
 ```bash
 OPENAI_EMBEDDING_DIMENSIONS="1536"
@@ -271,10 +277,16 @@ The Phase 3 SQL migration is:
 prisma/migrations/20260526000000_phase3_embeddings_rag/migration.sql
 ```
 
+Provider configuration:
+
+- Azure OpenAI is preferred when `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_DEPLOYMENT` are set.
+- Standard OpenAI remains supported with `OPENAI_API_KEY`.
+- `OPENAI_API_KEY` is optional when Azure OpenAI is configured.
+
 Known limitations:
 
-- OpenAI is the only implemented provider.
-- Azure OpenAI, Anthropic, Gemini, Mistral, Cohere, and Groq are adapter-ready but not implemented.
+- Azure OpenAI and standard OpenAI are implemented.
+- Anthropic, Gemini, Mistral, Cohere, and Groq are adapter-ready but not implemented.
 - FinOps is limited to basic token usage records.
 - Retry UI is scaffolded but not fully implemented.
 - No advanced prompt governance or evals yet.
