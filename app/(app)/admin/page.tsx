@@ -8,7 +8,8 @@ import { adminTenantWhere, getAdminScopes, resolveAdminScope } from "@/lib/admin
 import { isAiProviderConfigured } from "@/lib/ai/provider-config";
 import { requireCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/db";
-import { isQueueConfigured } from "@/lib/ingestion/queue";
+import { readEnv } from "@/lib/env";
+import { getQueueHealth, isQueueConfigured } from "@/lib/ingestion/queue";
 import { isObjectStorageConfigured } from "@/lib/storage/blob";
 
 type AdminPageProps = {
@@ -56,7 +57,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     crawls,
     embeddingJobs,
     auditLogs,
-    failedAiRequests
+    failedAiRequests,
+    queueHealth
   ] = await Promise.all([
     getAdminStats(tenantWhere),
     prisma.membership.findMany({
@@ -106,7 +108,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       include: { user: true, workspace: true },
       orderBy: { createdAt: "desc" },
       take: 10
-    })
+    }),
+    getAdminQueueHealth()
   ]);
 
   return (
@@ -163,6 +166,27 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <HealthItem label="Redis queue" ready={isQueueConfigured()} detail="Required for crawl and index retries" />
           <HealthItem label="Object storage" ready={isObjectStorageConfigured()} detail="Required for page storage" />
           <HealthItem label="AI provider" ready={isAiProviderConfigured()} detail="Azure OpenAI or OpenAI is required for embeddings and chat" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Queue operations</CardTitle>
+          <CardDescription>Background worker queue state for crawling, processing, chunking, and indexing.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4 xl:grid-cols-9">
+          <QueueMetric label="Provider" value={queueHealth.provider ?? "Not configured"} />
+          <QueueMetric
+            label="Serverless worker fallback"
+            value={queueHealth.serverlessWorkerFallbackEnabled ? "Enabled" : "Disabled"}
+          />
+          <QueueMetric label="Waiting" value={queueHealth.waiting} />
+          <QueueMetric label="Active" value={queueHealth.active} />
+          <QueueMetric label="Delayed" value={queueHealth.delayed} />
+          <QueueMetric label="Completed" value={queueHealth.completed} />
+          <QueueMetric label="Failed" value={queueHealth.failed} tone={queueHealth.failed ? "danger" : "normal"} />
+          <QueueMetric label="Paused" value={queueHealth.paused ? "Yes" : "No"} />
+          <QueueMetric label="Worker heartbeat" value={queueHealth.workerHeartbeatAt ? formatDate(new Date(queueHealth.workerHeartbeatAt)) : "None"} />
         </CardContent>
       </Card>
 
@@ -440,6 +464,47 @@ async function getAdminStats(where: { organizationId: string; workspaceId?: stri
   };
 }
 
+async function getAdminQueueHealth() {
+  if (!isQueueConfigured()) {
+    return {
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: false,
+      provider: null,
+      workerHeartbeatAt: null,
+      serverlessWorkerFallbackEnabled: isServerlessWorkerFallbackEnabled()
+    };
+  }
+
+  try {
+    const health = await getQueueHealth();
+    return {
+      ...health,
+      workerHeartbeatAt: health.workerHeartbeat?.at ?? null,
+      serverlessWorkerFallbackEnabled: isServerlessWorkerFallbackEnabled()
+    };
+  } catch {
+    return {
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: false,
+      provider: "unreachable",
+      workerHeartbeatAt: null,
+      serverlessWorkerFallbackEnabled: isServerlessWorkerFallbackEnabled()
+    };
+  }
+}
+
+function isServerlessWorkerFallbackEnabled() {
+  return Boolean(readEnv("WORKER_CRON_SECRET"));
+}
+
 function MetricCard({ label, value, tone = "normal" }: { label: string; value: number; tone?: "normal" | "danger" }) {
   return (
     <Card>
@@ -448,6 +513,17 @@ function MetricCard({ label, value, tone = "normal" }: { label: string; value: n
         <CardTitle className={tone === "danger" ? "text-destructive" : ""}>{value}</CardTitle>
       </CardHeader>
     </Card>
+  );
+}
+
+function QueueMetric({ label, value, tone = "normal" }: { label: string; value: string | number; tone?: "normal" | "danger" }) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={tone === "danger" ? "mt-1 text-sm font-semibold text-destructive" : "mt-1 text-sm font-semibold"}>
+        {value}
+      </p>
+    </div>
   );
 }
 
